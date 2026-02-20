@@ -2,6 +2,13 @@ import boto3
 import json
 from typing import Dict
 
+try:
+    from ddtrace.llmobs.decorators import agent
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+
 class TestAgent:
     """Simple test agent to verify Bedrock connection works"""
     
@@ -15,6 +22,7 @@ class TestAgent:
             aws_session_token=aws_session_token
         )
     
+    @agent(name="test_agent")
     async def test_call(self, message: str) -> str:
         """Test basic Bedrock call with Claude"""
         try:

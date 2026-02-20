@@ -17,6 +17,16 @@ from config import settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── Datadog LLM Observability ────────────────────────────────────
+try:
+    from ddtrace import patch_all
+    from ddtrace.llmobs import LLMObs
+    patch_all(botocore=True)  # Auto-instruments all Bedrock invoke_model calls
+    LLMObs.enable(ml_app="parrot", agentless=True)
+    logger.info("Datadog LLM Observability enabled")
+except Exception as e:
+    logger.warning(f"Datadog LLM Obs not available: {e}")
+
 app = FastAPI(
     title="Parrot Backend",
     description="Multi-agent system for workflow learning and replication",
@@ -148,6 +158,7 @@ class SimulateRequest(BaseModel):
     workflow_id: str
     expert_workflow: Optional[Dict] = None
     start_url: str = "https://www.google.com"
+    newbie_id: str = "simulator-agent"
 
 # ── Frontend (static files) ──────────────────────────────────────
 
@@ -331,6 +342,13 @@ async def visualize_workflow(workflow_id: str):
     if not neo4j_client:
         raise HTTPException(status_code=503, detail="Neo4j not configured")
     return neo4j_client.get_workflow_graph(workflow_id)
+
+@app.get("/graph/full")
+async def get_full_graph():
+    """Get the entire knowledge graph for visualization (all workflows)."""
+    if not neo4j_client:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    return neo4j_client.get_full_graph()
 
 @app.get("/graph/workflows/{workflow_id}/reasoning")
 async def get_reasoning_chain(workflow_id: str):
@@ -645,6 +663,83 @@ async def capture_websocket(websocket: WebSocket, session_id: str):
 
 # ── Simulate: Agent Replays Learned Workflow in Browser ──────────
 
+
+async def _persist_simulation_results(
+    sim_session,
+    workflow_id: str,
+    newbie_id: str,
+    expert_workflow: Dict,
+):
+    """
+    Background task: wait for simulation to complete, then persist results to Neo4j.
+
+    1. Poll until simulation completes
+    2. Create a newbie session in Neo4j
+    3. Log each action as a NewbieAction
+    4. Calculate convergence (expert vs newbie) via TwinAgent
+    5. Store convergence scores + alignment/divergence edges
+    """
+    if not neo4j_client:
+        logger.warning("Neo4j not available — skipping simulation persistence")
+        return
+
+    # 1. Wait for simulation to finish
+    while sim_session.status in ("starting", "running"):
+        await asyncio.sleep(2)
+
+    if not sim_session.action_log:
+        logger.info("Simulation produced no actions — nothing to persist")
+        return
+
+    try:
+        # 2. Create newbie session
+        session_id = neo4j_client.create_session(newbie_id, workflow_id)
+        logger.info(f"Created Neo4j session {session_id} for {newbie_id}")
+
+        # 3. Log each action
+        for entry in sim_session.action_log:
+            neo4j_client.log_newbie_action(
+                session_id=session_id,
+                action={
+                    "type": entry.get("action", {}).get("type", "unknown"),
+                    "description": entry.get("step_name", ""),
+                    "result": entry.get("result", {}),
+                    "expert_reasoning": entry.get("expert_reasoning", ""),
+                },
+                step_number=entry.get("step_number", 0),
+            )
+
+        logger.info(f"Logged {len(sim_session.action_log)} newbie actions to Neo4j")
+
+        # 4. Calculate convergence via TwinAgent
+        newbie_actions = [
+            {
+                "step_number": e.get("step_number"),
+                "step_name": e.get("step_name"),
+                "action": e.get("action"),
+                "result": e.get("result"),
+            }
+            for e in sim_session.action_log
+        ]
+
+        convergence = await twin_agent.calculate_convergence(
+            expert_workflow=expert_workflow,
+            newbie_actions=newbie_actions,
+        )
+        logger.info(f"Convergence score: {convergence.get('overall_score', '?')}")
+
+        # 5. Store convergence in Neo4j
+        neo4j_client.store_convergence(
+            session_id=session_id,
+            workflow_id=workflow_id,
+            convergence_data=convergence,
+        )
+        logger.info(f"Simulation results persisted to Neo4j for session {session_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to persist simulation results: {e}")
+
+
 @app.post("/simulate/start")
 async def start_simulation(request: SimulateRequest):
     """
@@ -664,6 +759,14 @@ async def start_simulation(request: SimulateRequest):
             workflow=expert_workflow,
             start_url=request.start_url,
         )
+
+        # Launch background task to persist results to Neo4j when simulation completes
+        asyncio.create_task(
+            _persist_simulation_results(
+                session, request.workflow_id, request.newbie_id, expert_workflow
+            )
+        )
+
         return {
             "success": True,
             "session_id": session.session_id,

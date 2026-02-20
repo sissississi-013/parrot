@@ -5,6 +5,14 @@ from typing import List, Dict, Optional
 import uuid
 from datetime import datetime
 
+try:
+    from ddtrace.llmobs.decorators import agent, tool
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+    tool = agent
+
 
 def _sanitize_for_json(obj):
     """Remove control characters from strings in nested data structures."""
@@ -31,6 +39,7 @@ class ObserverAgent:
         self.bedrock = bedrock_client
         self.model_id = model_id
     
+    @agent(name="observer_agent")
     async def process_session(self, actions: List[Dict], session_metadata: Dict) -> Dict:
         """
         Process a recorded session and extract structured workflow.
@@ -129,6 +138,7 @@ Respond in JSON format:
 
         return json.loads(text.strip())
     
+    @tool(name="generate_reasoning")
     async def generate_reasoning(self, action: Dict, context: Dict) -> str:
         """
         Generate reasoning for a single action.

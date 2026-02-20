@@ -2,6 +2,14 @@ import boto3
 import json
 from typing import Dict, Optional, List
 
+try:
+    from ddtrace.llmobs.decorators import agent, tool
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+    tool = agent
+
 class TwinAgent:
     """
     Twin (Coach) Agent guides new employees through expert workflows.
@@ -18,6 +26,7 @@ class TwinAgent:
         self.bedrock = bedrock_client
         self.model_id = model_id
     
+    @agent(name="twin_agent")
     async def guide_step(
         self,
         expert_workflow: Dict,
@@ -98,6 +107,7 @@ Provide coaching guidance in JSON format:
         except Exception as e:
             raise Exception(f"Twin agent guidance failed: {str(e)}")
     
+    @tool(name="calculate_convergence")
     async def calculate_convergence(
         self,
         expert_workflow: Dict,
