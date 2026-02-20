@@ -1,8 +1,20 @@
 import boto3
 import json
+import re
 from typing import List, Dict, Optional
 import uuid
 from datetime import datetime
+
+
+def _sanitize_for_json(obj):
+    """Remove control characters from strings in nested data structures."""
+    if isinstance(obj, str):
+        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', obj)
+    elif isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
 
 class ObserverAgent:
     """
@@ -40,7 +52,7 @@ Session Context:
 - Number of Actions: {len(actions)}
 
 Actions Sequence:
-{json.dumps(actions, indent=2)}
+{json.dumps(_sanitize_for_json(actions), indent=2)}
 
 Your task:
 1. Identify discrete workflow steps (group related actions)
@@ -101,7 +113,8 @@ Respond in JSON format:
             raise Exception(f"Observer agent processing failed: {str(e)}")
     
     def _extract_json(self, text: str) -> Dict:
-        """Extract JSON from Claude's response (handles markdown code blocks)"""
+        """Extract JSON from Claude's response (handles markdown code blocks + control chars)"""
+        import re
         # Remove markdown code blocks if present
         text = text.strip()
         if text.startswith('```json'):
@@ -110,7 +123,10 @@ Respond in JSON format:
             text = text[3:]
         if text.endswith('```'):
             text = text[:-3]
-        
+
+        # Strip control characters that break JSON parsing
+        text = re.sub(r'[\x00-\x1f\x7f]', lambda m: ' ' if m.group() not in '\n\r\t' else m.group(), text)
+
         return json.loads(text.strip())
     
     async def generate_reasoning(self, action: Dict, context: Dict) -> str:
