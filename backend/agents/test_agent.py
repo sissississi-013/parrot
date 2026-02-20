@@ -5,13 +5,14 @@ from typing import Dict
 class TestAgent:
     """Simple test agent to verify Bedrock connection works"""
     
-    def __init__(self, region: str, model_id: str, aws_access_key_id: str, aws_secret_access_key: str):
+    def __init__(self, region: str, model_id: str, aws_access_key_id: str, aws_secret_access_key: str, aws_session_token: str = None):
         self.model_id = model_id
         self.bedrock = boto3.client(
             service_name='bedrock-runtime',
             region_name=region,
             aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key
+            aws_secret_access_key=aws_secret_access_key,
+            aws_session_token=aws_session_token
         )
     
     async def test_call(self, message: str) -> str:

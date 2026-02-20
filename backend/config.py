@@ -3,9 +3,10 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # AWS Bedrock
-    aws_region: str = "us-east-1"
+    aws_default_region: str = "us-east-1"
     aws_access_key_id: str
     aws_secret_access_key: str
+    aws_session_token: Optional[str] = None
     bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     
     # Neo4j

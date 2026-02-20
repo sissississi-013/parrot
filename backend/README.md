@@ -8,6 +8,8 @@ Multi-agent system backend using AWS Bedrock (Claude Sonnet) for workflow learni
 
 ```bash
 cd backend
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 

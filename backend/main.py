@@ -24,17 +24,19 @@ app.add_middleware(
 # Initialize Bedrock client
 bedrock_client = boto3.client(
     service_name='bedrock-runtime',
-    region_name=settings.aws_region,
+    region_name=settings.aws_default_region,
     aws_access_key_id=settings.aws_access_key_id,
-    aws_secret_access_key=settings.aws_secret_access_key
+    aws_secret_access_key=settings.aws_secret_access_key,
+    aws_session_token=settings.aws_session_token
 )
 
 # Initialize agents
 test_agent = TestAgent(
-    region=settings.aws_region,
+    region=settings.aws_default_region,
     model_id=settings.bedrock_model_id,
     aws_access_key_id=settings.aws_access_key_id,
-    aws_secret_access_key=settings.aws_secret_access_key
+    aws_secret_access_key=settings.aws_secret_access_key,
+    aws_session_token=settings.aws_session_token
 )
 
 observer_agent = ObserverAgent(
