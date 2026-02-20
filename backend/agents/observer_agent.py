@@ -1,9 +1,13 @@
-import boto3
 import json
+import logging
 import re
-from typing import List, Dict, Optional
 import uuid
 from datetime import datetime
+from typing import List, Dict
+
+from ddtrace import tracer
+
+logger = logging.getLogger("parrot.observer")
 
 
 def _sanitize_for_json(obj):
@@ -15,6 +19,7 @@ def _sanitize_for_json(obj):
     elif isinstance(obj, list):
         return [_sanitize_for_json(v) for v in obj]
     return obj
+
 
 class ObserverAgent:
     """
@@ -31,19 +36,18 @@ class ObserverAgent:
         self.bedrock = bedrock_client
         self.model_id = model_id
     
+    @tracer.wrap(service="parrot", resource="observer.process_session")
     async def process_session(self, actions: List[Dict], session_metadata: Dict) -> Dict:
-        """
-        Process a recorded session and extract structured workflow.
-        
-        Args:
-            actions: List of action dictionaries with type, target, value, timestamp
-            session_metadata: Session info (user_id, role, task_type)
-        
-        Returns:
-            Structured workflow with steps, reasoning, and metadata
-        """
+        span = tracer.current_span()
+        task_type = session_metadata.get("task_type", "unknown")
+
+        if span:
+            span.set_tag("observer.task_type", task_type)
+            span.set_tag("observer.session_id", session_metadata.get("session_id"))
+            span.set_tag("observer.user_id", session_metadata.get("user_id"))
+            span.set_metric("observer.action_count", len(actions))
+
         try:
-            # Build prompt for Claude
             prompt = f"""You are analyzing an expert employee's workflow session.
 
 Session Context:
@@ -107,9 +111,25 @@ Respond in JSON format:
             workflow_data['created_at'] = datetime.utcnow().isoformat()
             workflow_data['expert_user_id'] = session_metadata.get('user_id')
             
+            steps_extracted = len(workflow_data.get("steps", []))
+            if span:
+                span.set_metric("observer.steps_extracted", steps_extracted)
+                span.set_tag("observer.workflow_name", workflow_data.get("workflow_name", ""))
+
+            logger.info(
+                "Session processed: session_id=%s steps=%d task=%s",
+                session_metadata.get("session_id"),
+                steps_extracted,
+                task_type,
+            )
+
             return workflow_data
-            
+
         except Exception as e:
+            if span:
+                span.set_tag("error", True)
+                span.set_tag("error.message", str(e))
+            logger.error("Observer processing failed: %s", e)
             raise Exception(f"Observer agent processing failed: {str(e)}")
     
     def _extract_json(self, text: str) -> Dict:
@@ -129,17 +149,12 @@ Respond in JSON format:
 
         return json.loads(text.strip())
     
+    @tracer.wrap(service="parrot", resource="observer.generate_reasoning")
     async def generate_reasoning(self, action: Dict, context: Dict) -> str:
-        """
-        Generate reasoning for a single action.
-        
-        Args:
-            action: Single action dictionary
-            context: Surrounding context (previous actions, session info)
-        
-        Returns:
-            Reasoning explanation string
-        """
+        span = tracer.current_span()
+        if span:
+            span.set_tag("observer.action_type", action.get("type", "unknown"))
+
         prompt = f"""Explain why this action was taken in the workflow:
 
 Action: {json.dumps(action, indent=2)}

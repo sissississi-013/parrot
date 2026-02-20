@@ -29,8 +29,10 @@ Required variables:
 ### 3. Run Server
 
 ```bash
-uvicorn main:app --reload --port 8000
+ddtrace-run uvicorn main:app --reload --port 8000
 ```
+
+`ddtrace-run` auto-instruments FastAPI and Bedrock calls for Datadog LLM Observability.
 
 Server will start at `http://localhost:8000`
 
@@ -80,13 +82,56 @@ backend/
 │   └── twin_agent.py    # Guides and coaches new employees
 ```
 
+## Datadog Integration
+
+### What's instrumented
+
+| Layer | How | What you get |
+|-------|-----|--------------|
+| FastAPI routes | `ddtrace-run` auto-instrumentation | Request rate, latency (P50/P95/P99), error rate per endpoint |
+| AWS Bedrock / boto3 | `ddtrace-run` auto-instrumentation | LLM call latency, error count, invocation traces |
+| LLM Observability | `LLMObs.enable()` in app startup | Prompt/completion tracking, model usage, token counts |
+| Observer Agent | Custom `@tracer.wrap()` spans | Sessions processed, steps extracted, extraction duration, task type tags |
+| Twin Agent | Custom `@tracer.wrap()` spans | Convergence scores, deviation counts, guidance latency |
+| Test Agent | Custom `@tracer.wrap()` spans | Bedrock connectivity checks |
+
+### Setup
+
+1. Set `DD_API_KEY` in `.env` with your Datadog API key
+2. Start the server with `ddtrace-run`:
+
+```bash
+ddtrace-run uvicorn main:app --reload --port 8000
+```
+
+3. (Optional) Provision the dashboard:
+
+```bash
+pip install datadog-api-client
+DD_API_KEY=<key> DD_APP_KEY=<app-key> python ../infra/datadog/dashboard.py
+```
+
+Or preview the JSON first:
+
+```bash
+python ../infra/datadog/dashboard.py --dry-run
+```
+
+### Custom span metrics available
+
+- `observer.action_count` — number of raw actions in a session
+- `observer.steps_extracted` — workflow steps extracted per session
+- `twin.step_convergence_score` — per-step convergence (0.0–1.0)
+- `twin.overall_convergence_score` — full-session convergence (0.0–1.0)
+- `twin.deviation_count` — total deviations per convergence analysis
+- `twin.high_impact_deviations` — high-impact deviations per analysis
+
 ## Next Steps
 
 1. ✅ Test Bedrock connection with `/test` endpoint
-2. ⏳ Wait for Sissi to set up Neo4j + MongoDB
+2. ✅ Add Datadog instrumentation
 3. ⏳ Integrate data layer with Observer/Twin agents
-4. ⏳ Add Datadog instrumentation
-5. ⏳ Test with real workflow data
+4. ⏳ Test with real workflow data
 
 ## Development
 

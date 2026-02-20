@@ -1,14 +1,22 @@
+import os
+os.environ.setdefault("DD_TRACE_OPENAI_AGENTS_ENABLED", "false")
+
+import asyncio
+import json
+import logging
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+
+import boto3
+from ddtrace import tracer
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
-import asyncio
-import boto3
-import json
-import logging
+
 from agents import TestAgent, ObserverAgent, TwinAgent, SimulatorAgent
 from db import Neo4jClient
 from capture import ScreenRecorder, ActionDetector, BrowserCapture
@@ -17,10 +25,47 @@ from config import settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+
+def _init_datadog():
+    if not settings.datadog_enabled:
+        logger.info("Datadog API key not set — skipping LLM Observability init")
+        return
+
+    from ddtrace.llmobs import LLMObs
+
+    LLMObs.enable(
+        ml_app=settings.dd_llmobs_ml_app,
+        api_key=settings.dd_api_key,
+        site=settings.dd_site,
+        agentless_enabled=settings.dd_llmobs_agentless_enabled,
+        env=settings.dd_env,
+        service=settings.dd_service,
+    )
+    logger.info("Datadog LLM Observability enabled for app=%s", settings.dd_llmobs_ml_app)
+
+
+def _shutdown_datadog():
+    if not settings.datadog_enabled:
+        return
+    try:
+        from ddtrace.llmobs import LLMObs
+        LLMObs.disable()
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _init_datadog()
+    yield
+    _shutdown_datadog()
+
+
 app = FastAPI(
     title="Parrot Backend",
     description="Multi-agent system for workflow learning and replication",
-    version="0.1.0"
+    version=settings.dd_version,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -30,6 +75,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    span = tracer.current_span()
+    if span:
+        span.set_tag("http.route", request.url.path)
+        span.set_metric("request.duration_ms", duration_ms)
+
+    return response
+
 
 # ── Initialize services ─────────────────────────────────────────
 
@@ -165,9 +225,10 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 async def health():
     return {
         "status": "healthy",
-        "service": "parrot-backend",
-        "version": "0.1.0",
-        "neo4j": "connected" if neo4j_client else "not configured"
+        "service": settings.dd_service,
+        "version": settings.dd_version,
+        "datadog_enabled": settings.datadog_enabled,
+        "neo4j": "connected" if neo4j_client else "not configured",
     }
 
 # ── Test endpoint ────────────────────────────────────────────────
