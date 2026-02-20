@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parrot — Watch & Learn</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: {
+        parrot: { 50:'#fefce8',100:'#fef9c3',200:'#fef08a',300:'#fde047',400:'#facc15',500:'#eab308',600:'#ca8a04' },
+        lime: { 400:'#a3e635',500:'#84cc16' }
+      }}}
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; margin: 0; height: 100vh; overflow: hidden; }
+    .action-card { animation: slideIn 0.25s ease-out; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 3px; }
+    .mode-btn.active { background:white; color:#111; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .mode-btn { transition: all .15s; }
+    #vis-graph { width:100%; height:100%; min-height:400px; }
+  </style>
+</head>
+<body class="bg-gray-50">
+
+<div class="h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 shrink-0 z-50">
+    <div class="px-5 py-2 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <img src="/static/parrotlogo.png" alt="Parrot" class="w-8 h-8" />
+        <span class="font-bold text-gray-900 text-[15px]">Parrot</span>
+        <span class="text-[10px] text-gray-400">Watch & Learn</span>
+      </div>
+      <div class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+        <button onclick="setMode('capture')" id="mode-capture" class="mode-btn active px-4 py-1.5 rounded-md text-xs font-semibold">Capture</button>
+        <button onclick="setMode('workflows')" id="mode-workflows" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Workflows</button>
+        <button onclick="setMode('simulate')" id="mode-simulate" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Simulate</button>
+      </div>
+      <div id="health-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-[11px] text-gray-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-gray-300"></span> ...
+      </div>
+    </div>
+  </header>
+
+  <!-- Body -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- ═══ MAIN AREA ═══ -->
+    <div class="flex-1 overflow-hidden flex flex-col" id="main-area">
+
+      <!-- CAPTURE MAIN: Live browser view -->
+      <div id="main-capture" class="h-full flex flex-col">
+        <!-- Before recording -->
+        <div id="cap-idle" class="flex-1 flex items-center justify-center">
+          <div class="text-center max-w-sm">
+            <img src="/static/parrotlogo.png" class="w-20 h-20 mx-auto mb-4 opacity-30" />
+            <h2 class="text-lg font-bold text-gray-800 mb-2">Watch & Learn</h2>
+            <p class="text-sm text-gray-400">Enter a URL and hit <strong>Start</strong> in the sidebar. A browser will open — work in it and the agent captures every action.</p>
+          </div>
+        </div>
+        <!-- During recording: live browser view -->
+        <div id="cap-browser" class="flex-1 hidden flex flex-col">
+          <div class="px-3 py-1.5 bg-gray-800 flex items-center gap-3 shrink-0">
+            <div class="flex gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500/80"></span>
+            </div>
+            <span id="cap-url-bar" class="flex-1 text-[11px] text-gray-400 font-mono truncate bg-gray-700/50 rounded px-2 py-0.5">about:blank</span>
+            <div class="flex items-center gap-2">
+              <span id="cap-action-count" class="text-[10px] text-gray-500">0 actions</span>
+              <span class="w-2 h-2 rounded-full bg-green-400 pulse-dot"></span>
+            </div>
+          </div>
+          <div class="flex-1 bg-gray-900 flex items-center justify-center overflow-hidden">
+            <img id="cap-screenshot" class="max-w-full max-h-full object-contain" src="" alt="Live browser view" />
+          </div>
+        </div>
+      </div>
+
+      <!-- WORKFLOWS MAIN -->
+      <div id="main-workflows" class="h-full hidden">
+        <div id="wf-empty" class="h-full flex items-center justify-center">
+          <div class="text-center">
+            <div class="text-4xl mb-3 opacity-30">📋</div>
+            <p class="text-sm text-gray-400">Select a workflow to visualize its knowledge graph</p>
+          </div>
+        </div>
+        <div id="wf-content" class="h-full hidden flex flex-col">
+          <div id="wf-header" class="px-5 py-3 border-b border-gray-100 bg-white shrink-0"></div>
+          <div class="flex-1 relative">
+            <div id="vis-graph"></div>
+            <div class="absolute bottom-3 left-3 flex gap-3 bg-white/90 backdrop-blur rounded-lg px-3 py-2 border border-gray-100 shadow-sm">
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Expert</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Workflow</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded bg-orange-400"></span>Step</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded bg-purple-500" style="clip-path:polygon(50% 0%,100% 100%,0% 100%)"></span>Reasoning</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>Action</span>
+            </div>
+          </div>
+          <div id="wf-reasoning" class="border-t border-gray-100 bg-white px-5 py-3 max-h-[180px] overflow-y-auto shrink-0 hidden"></div>
+        </div>
+      </div>
+
+      <!-- SIMULATE MAIN -->
+      <div id="main-simulate" class="h-full hidden flex flex-col">
+        <div id="sim-empty" class="flex-1 flex items-center justify-center">
+          <div class="text-center">
+            <div class="text-4xl mb-3 opacity-30">🤖</div>
+            <p class="text-sm text-gray-400">Select a workflow and launch to watch the agent replicate it</p>
+          </div>
+        </div>
+        <div id="sim-browser" class="flex-1 hidden flex flex-col">
+          <div class="px-3 py-1.5 bg-gray-800 flex items-center gap-3 shrink-0">
+            <div class="flex gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500/80"></span>
+            </div>
+            <span id="sim-url" class="flex-1 text-[11px] text-gray-400 font-mono truncate bg-gray-700/50 rounded px-2 py-0.5">about:blank</span>
+            <span id="sim-step-badge" class="text-[10px] text-gray-500">Step 0/0</span>
+            <span id="sim-status-dot" class="w-2 h-2 rounded-full bg-green-400 pulse-dot"></span>
+          </div>
+          <div class="flex-1 bg-gray-900 flex items-center justify-center overflow-hidden">
+            <img id="sim-screenshot" class="max-w-full max-h-full object-contain" src="" alt="Browser" />
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ RIGHT SIDEBAR (340px) ═══ -->
+    <div class="w-[340px] border-l border-gray-200 bg-white flex flex-col shrink-0">
+
+      <!-- CAPTURE SIDEBAR -->
+      <div id="sidebar-capture" class="flex flex-col h-full">
+        <div class="p-4 border-b border-gray-100 shrink-0">
+          <h3 class="text-sm font-semibold text-gray-900 mb-2">Browser Capture</h3>
+          <input id="cap-url" type="text" value="https://www.google.com" placeholder="Start URL"
+            class="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-parrot-300 outline-none mb-2 font-mono" />
+          <div class="flex gap-2 mb-2">
+            <input id="cap-user" type="text" value="expert-1" placeholder="User ID" class="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs outline-none" />
+            <input id="cap-task" type="text" value="general" placeholder="Task type" class="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs outline-none" />
+          </div>
+          <div class="flex gap-2">
+            <button onclick="startBrowserCapture()" id="btn-cap-start" class="flex-1 bg-gradient-to-r from-parrot-400 to-lime-400 text-gray-900 font-semibold py-2 rounded-lg text-xs hover:brightness-105 transition">
+              Start
+            </button>
+            <button onclick="stopBrowserCapture()" id="btn-cap-stop" class="flex-1 bg-red-500 text-white font-semibold py-2 rounded-lg text-xs hover:bg-red-600 transition hidden">
+              Stop & Learn
+            </button>
+          </div>
+        </div>
+        <!-- Action Feed -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-1.5" id="action-feed">
+          <p class="text-xs text-gray-300 text-center pt-10">Actions appear here in real-time as you work in the browser</p>
+        </div>
+        <!-- Result -->
+        <div id="cap-result" class="border-t border-gray-100 p-3 hidden shrink-0">
+          <div id="cap-result-content" class="bg-parrot-50 rounded-lg p-3 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- WORKFLOWS SIDEBAR -->
+      <div id="sidebar-workflows" class="flex-col h-full hidden">
+        <div class="p-4 border-b border-gray-100 shrink-0">
+          <h3 class="text-sm font-semibold text-gray-900 mb-2">Workflows</h3>
+          <div class="relative">
+            <input id="wf-search" type="text" placeholder="Search..." onkeyup="if(event.key==='Enter') searchWorkflows()"
+              class="w-full px-3 py-1.5 pl-8 border border-gray-200 rounded-lg text-xs outline-none" />
+            <svg class="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          </div>
+        </div>
+        <div id="wf-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+          <p class="text-xs text-gray-300 text-center pt-8">Loading...</p>
+        </div>
+        <div id="wf-step-detail" class="border-t border-gray-100 p-4 max-h-[260px] overflow-y-auto shrink-0 hidden"></div>
+      </div>
+
+      <!-- SIMULATE SIDEBAR -->
+      <div id="sidebar-simulate" class="flex-col h-full hidden">
+        <div class="p-4 border-b border-gray-100 shrink-0">
+          <h3 class="text-sm font-semibold text-gray-900 mb-2">Simulate</h3>
+          <select id="sim-workflow" class="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs outline-none mb-2">
+            <option value="">Select workflow...</option>
+          </select>
+          <input id="sim-url-input" type="text" value="https://www.google.com" placeholder="Start URL"
+            class="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs outline-none mb-2 font-mono" />
+          <div class="flex gap-2">
+            <button onclick="startSimulation()" id="btn-sim-start" class="flex-1 bg-gradient-to-r from-purple-500 to-blue-500 text-white font-semibold py-2 rounded-lg text-xs hover:brightness-110 transition">
+              Launch
+            </button>
+            <button onclick="stopSimulation()" id="btn-sim-stop" class="flex-1 bg-red-500 text-white font-semibold py-2 rounded-lg text-xs hidden">Stop</button>
+          </div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3 space-y-1.5" id="sim-action-log">
+          <p class="text-xs text-gray-300 text-center pt-8">Agent actions appear here</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let capSessionId = null, capWs = null;
+let simSessionId = null, simWs = null;
+let visNetwork = null;
+
+// ── Health ─────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const d = await (await fetch(`${API}/health`)).json();
+    const el = document.getElementById('health-badge');
+    const ok = d.neo4j === 'connected';
+    el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${ok?'bg-green-400':'bg-yellow-400'}"></span> ${ok?'Connected':'No Neo4j'}`;
+    el.className = `flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${ok?'bg-green-50 text-green-700':'bg-yellow-50 text-yellow-700'}`;
+  } catch { document.getElementById('health-badge').innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-red-400"></span> Offline'; }
+}
+
+// ── Mode Switch ────────────────────────────────────────────────
+function setMode(mode) {
+  ['capture','workflows','simulate'].forEach(m => {
+    document.getElementById(`main-${m}`).classList.toggle('hidden', m !== mode);
+    document.getElementById(`sidebar-${m}`).classList.toggle('hidden', m !== mode);
+    document.getElementById(`sidebar-${m}`).classList.toggle('flex', m === mode);
+    const btn = document.getElementById(`mode-${m}`);
+    btn.classList.toggle('active', m === mode);
+    btn.classList.toggle('text-gray-500', m !== mode);
+  });
+  if (mode === 'workflows') loadWorkflows();
+  if (mode === 'simulate') loadSimWorkflows();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CAPTURE — Browser-based (Playwright)
+// ═══════════════════════════════════════════════════════════════
+
+async function startBrowserCapture() {
+  const url = document.getElementById('cap-url').value || 'https://www.google.com';
+  const userId = document.getElementById('cap-user').value;
+  const taskType = document.getElementById('cap-task').value;
+
+  document.getElementById('btn-cap-start').textContent = 'Launching...';
+
+  try {
+    const d = await (await fetch(`${API}/browser/start`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id: userId, task_type: taskType, start_url: url }),
+    })).json();
+
+    capSessionId = d.session_id;
+
+    // Show browser view
+    document.getElementById('cap-idle').classList.add('hidden');
+    document.getElementById('cap-browser').classList.remove('hidden');
+    document.getElementById('cap-url-bar').textContent = url;
+    document.getElementById('btn-cap-start').classList.add('hidden');
+    document.getElementById('btn-cap-stop').classList.remove('hidden');
+    document.getElementById('cap-result').classList.add('hidden');
+    document.getElementById('action-feed').innerHTML = '';
+
+    // Connect WebSocket
+    connectBrowserWs(capSessionId);
+
+  } catch (e) {
+    alert('Failed to launch browser: ' + e.message);
+  }
+  document.getElementById('btn-cap-start').textContent = 'Start';
+}
+
+async function stopBrowserCapture() {
+  if (!capSessionId) return;
+  if (capWs) capWs.close();
+
+  document.getElementById('btn-cap-stop').textContent = 'Processing...';
+
+  try {
+    const d = await (await fetch(`${API}/browser/stop/${capSessionId}?auto_process=true`, {method:'POST'})).json();
+
+    document.getElementById('btn-cap-stop').classList.add('hidden');
+    document.getElementById('btn-cap-stop').textContent = 'Stop & Learn';
+    document.getElementById('btn-cap-start').classList.remove('hidden');
+
+    if (d.workflow) {
+      const r = document.getElementById('cap-result');
+      r.classList.remove('hidden');
+      document.getElementById('cap-result-content').innerHTML = `
+        <div class="flex items-center gap-1.5 mb-1">
+          <span>✅</span>
+          <span class="font-semibold text-gray-900">${d.workflow.workflow_name}</span>
+        </div>
+        <p class="text-gray-500">${d.workflow.steps?.length || 0} steps learned · ${d.stored_in_neo4j ? 'Saved to Neo4j' : ''}</p>
+        <p class="text-gray-400 mt-1">${d.actions_captured} actions captured</p>
+      `;
+    }
+  } catch (e) {
+    alert('Stop failed: ' + e.message);
+    document.getElementById('btn-cap-stop').textContent = 'Stop & Learn';
+  }
+  capSessionId = null;
+}
+
+function connectBrowserWs(sessionId) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  capWs = new WebSocket(`${proto}//${location.host}/ws/browser/${sessionId}`);
+  capWs.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'screenshot' && msg.image_b64) {
+      document.getElementById('cap-screenshot').src = `data:image/jpeg;base64,${msg.image_b64}`;
+    }
+
+    if (msg.type === 'action') {
+      addBrowserAction(msg.action);
+    }
+
+    if (msg.type === 'status') {
+      document.getElementById('cap-url-bar').textContent = msg.url || '';
+      document.getElementById('cap-action-count').textContent = `${msg.actions} actions`;
+    }
+
+    if (msg.type === 'stopped') {
+      document.getElementById('cap-action-count').textContent = `${msg.total_actions} actions (done)`;
+    }
+  };
+  capWs.onclose = () => { capWs = null; };
+}
+
+function addBrowserAction(action) {
+  const feed = document.getElementById('action-feed');
+  // Remove placeholder
+  if (feed.querySelector('p.text-gray-300')) feed.innerHTML = '';
+
+  const colors = {
+    click: 'bg-blue-50 text-blue-700 border-blue-100',
+    type: 'bg-green-50 text-green-700 border-green-100',
+    navigate: 'bg-purple-50 text-purple-700 border-purple-100',
+    submit: 'bg-red-50 text-red-700 border-red-100',
+    scroll: 'bg-gray-50 text-gray-500 border-gray-100',
+  };
+  const c = colors[action.type] || 'bg-gray-50 text-gray-600 border-gray-100';
+
+  const card = document.createElement('div');
+  card.className = `action-card rounded-lg p-2 border ${c}`;
+  card.innerHTML = `
+    <div class="flex items-center gap-1.5">
+      <span class="text-[10px] font-bold uppercase tracking-wide">${action.type}</span>
+      <span class="text-[10px] opacity-50">#${action.action_index ?? ''}</span>
+    </div>
+    <p class="text-[11px] font-medium leading-snug mt-0.5">${action.description || ''}</p>
+  `;
+  feed.appendChild(card);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WORKFLOWS + vis.js
+// ═══════════════════════════════════════════════════════════════
+
+async function loadWorkflows() {
+  try {
+    const d = await (await fetch(`${API}/graph/workflows`)).json();
+    renderWfList(d.workflows || []);
+  } catch { document.getElementById('wf-list').innerHTML = '<p class="text-xs text-red-400 text-center">Failed</p>'; }
+}
+
+async function searchWorkflows() {
+  const q = document.getElementById('wf-search').value.trim();
+  if (!q) return loadWorkflows();
+  const d = await (await fetch(`${API}/graph/search`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
+  renderWfList(d.results || []);
+}
+
+function renderWfList(wfs) {
+  const list = document.getElementById('wf-list');
+  if (!wfs.length) { list.innerHTML = '<p class="text-xs text-gray-300 text-center pt-8">No workflows</p>'; return; }
+  list.innerHTML = wfs.map(w => `
+    <button onclick="selectWorkflow('${w.id}')" class="w-full text-left p-2.5 rounded-lg border border-gray-100 hover:border-parrot-300 hover:bg-parrot-50/50 transition group">
+      <p class="text-xs font-semibold text-gray-900 group-hover:text-parrot-700">${w.name}</p>
+      <div class="flex items-center gap-2 mt-0.5">
+        <span class="text-[10px] text-gray-400">${w.step_count||'?'} steps</span>
+        ${w.task_type?`<span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">${w.task_type}</span>`:''}
+      </div>
+    </button>
+  `).join('');
+}
+
+async function selectWorkflow(wid) {
+  const [wfR,gR,rR] = await Promise.all([
+    fetch(`${API}/graph/workflows/${wid}`),
+    fetch(`${API}/graph/workflows/${wid}/visualize`),
+    fetch(`${API}/graph/workflows/${wid}/reasoning`),
+  ]);
+  const wf=await wfR.json(), gd=await gR.json(), re=await rR.json();
+
+  document.getElementById('wf-empty').classList.add('hidden');
+  document.getElementById('wf-content').classList.remove('hidden');
+
+  document.getElementById('wf-header').innerHTML = `
+    <div class="flex items-center justify-between">
+      <div><h2 class="text-sm font-bold text-gray-900">${wf.workflow_name}</h2>
+        <p class="text-[11px] text-gray-500 mt-0.5">${(wf.pattern||wf.description||'').slice(0,120)}</p></div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="text-[10px] bg-parrot-100 text-parrot-700 px-2 py-0.5 rounded-full font-medium">${wf.task_type||'general'}</span>
+        <span class="text-[10px] text-gray-400">${wf.step_count} steps</span>
+      </div>
+    </div>`;
+
+  renderVisGraph(gd);
+
+  const chain = re.reasoning_chain||[];
+  const rp = document.getElementById('wf-reasoning');
+  if (chain.length) {
+    rp.classList.remove('hidden');
+    rp.innerHTML = `<h4 class="text-xs font-semibold text-gray-700 mb-2">Reasoning Chain</h4>
+      <div class="space-y-2">${chain.map(r=>`
+        <div class="flex gap-2">
+          <div class="shrink-0 w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-bold mt-0.5">${r.step_number}</div>
+          <div><p class="text-xs font-medium text-gray-900">${r.step_name}</p>
+            <p class="text-[11px] text-purple-600 mt-0.5">${r.reasoning||'—'}</p></div>
+        </div>`).join('')}</div>`;
+  } else rp.classList.add('hidden');
+  document.getElementById('wf-step-detail').classList.add('hidden');
+}
+
+function renderVisGraph(data) {
+  const container = document.getElementById('vis-graph');
+  const shapes={Expert:'circle',Workflow:'box',Step:'diamond',Reasoning:'triangle',Action:'dot'};
+  const colors={Expert:'#22c55e',Workflow:'#3b82f6',Step:'#f59e0b',Reasoning:'#a855f7',Action:'#9ca3af'};
+  const sizes={Expert:25,Workflow:30,Step:22,Reasoning:18,Action:14};
+
+  const nodes=(data.nodes||[]).map(n=>({
+    id:n.id, label:(n.label||'').slice(0,28), shape:shapes[n.type]||'dot',
+    color:{background:colors[n.type]||'#ccc',border:colors[n.type]||'#ccc',highlight:{background:'#facc15',border:'#eab308'}},
+    size:sizes[n.type]||16, font:{size:11,color:'#374151',face:'Inter'},
+    title:n.full_text||n.label||'', _data:n
+  }));
+  const edges=(data.edges||[]).map(e=>({
+    from:e.from,to:e.to,label:e.label||'',
+    font:{size:9,color:'#9ca3af',align:'middle'},
+    color:{color:e.color||'#d1d5db',highlight:'#facc15'},
+    arrows:'to',dashes:e.style==='dashed',smooth:{type:'cubicBezier',roundness:.4}
+  }));
+
+  if(visNetwork) visNetwork.destroy();
+  visNetwork = new vis.Network(container,
+    {nodes:new vis.DataSet(nodes),edges:new vis.DataSet(edges)},
+    {layout:{hierarchical:{enabled:true,direction:'LR',sortMethod:'directed',nodeSpacing:110,levelSeparation:170}},
+     physics:{enabled:false},interaction:{hover:true,tooltipDelay:100,zoomView:true,dragView:true},edges:{width:1.5}}
+  );
+  visNetwork.on('click',(p)=>{
+    if(p.nodes.length){const n=nodes.find(x=>x.id===p.nodes[0]);if(n)showNodeDetail(n._data);}
+  });
+}
+
+function showNodeDetail(n) {
+  const p=document.getElementById('wf-step-detail'); p.classList.remove('hidden');
+  const tc={Expert:'green',Workflow:'blue',Step:'orange',Reasoning:'purple',Action:'gray'};
+  const c=tc[n.type]||'gray';
+  p.innerHTML=`
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-${c}-100 text-${c}-700">${n.type}</span>
+      <span class="text-xs font-semibold text-gray-900">${n.label}</span></div>
+    ${n.reasoning?`<p class="text-xs text-purple-600 mb-1"><b>Reasoning:</b> ${n.reasoning}</p>`:''}
+    ${n.context?`<p class="text-xs text-gray-500 mb-1"><b>Context:</b> ${n.context}</p>`:''}
+    ${n.full_text&&n.full_text!==n.label?`<p class="text-xs text-gray-600">${n.full_text}</p>`:''}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIMULATE
+// ═══════════════════════════════════════════════════════════════
+
+async function loadSimWorkflows() {
+  try {
+    const d=await(await fetch(`${API}/graph/workflows`)).json();
+    const sel=document.getElementById('sim-workflow');
+    sel.innerHTML='<option value="">Select workflow...</option>';
+    (d.workflows||[]).forEach(w=>{sel.innerHTML+=`<option value="${w.id}">${w.name} (${w.step_count||'?'} steps)</option>`;});
+  } catch {}
+}
+
+async function startSimulation() {
+  const wid=document.getElementById('sim-workflow').value;
+  if(!wid) return alert('Select a workflow');
+  const url=document.getElementById('sim-url-input').value||'https://www.google.com';
+  document.getElementById('btn-sim-start').textContent='Launching...';
+  try {
+    const d=await(await fetch(`${API}/simulate/start`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({workflow_id:wid,start_url:url})})).json();
+    simSessionId=d.session_id;
+    document.getElementById('btn-sim-start').classList.add('hidden');
+    document.getElementById('btn-sim-stop').classList.remove('hidden');
+    document.getElementById('sim-empty').classList.add('hidden');
+    document.getElementById('sim-browser').classList.remove('hidden');
+    document.getElementById('sim-step-badge').textContent=`Step 0/${d.total_steps}`;
+    document.getElementById('sim-action-log').innerHTML='';
+    connectSimWs(simSessionId);
+    pollSimShots();
+  } catch(e) { alert('Failed: '+e.message); }
+  document.getElementById('btn-sim-start').textContent='Launch';
+}
+
+async function stopSimulation() {
+  if(!simSessionId) return;
+  if(simWs) simWs.close();
+  await fetch(`${API}/simulate/stop/${simSessionId}`,{method:'POST'});
+  document.getElementById('btn-sim-stop').classList.add('hidden');
+  document.getElementById('btn-sim-start').classList.remove('hidden');
+  document.getElementById('sim-status-dot').classList.remove('pulse-dot');
+  simSessionId=null;
+}
+
+function connectSimWs(sid) {
+  const proto=location.protocol==='https:'?'wss:':'ws:';
+  simWs=new WebSocket(`${proto}//${location.host}/ws/simulate/${sid}`);
+  simWs.onmessage=(e)=>{
+    const m=JSON.parse(e.data);
+    if(m.type==='screenshot'&&m.image_b64) document.getElementById('sim-screenshot').src=`data:image/jpeg;base64,${m.image_b64}`;
+    if(m.type==='action') addSimCard(m);
+    if(m.type==='status') document.getElementById('sim-step-badge').textContent=`Step ${m.current_step}/${m.total_steps}`;
+    if(m.type==='completed'){document.getElementById('sim-status-dot').classList.remove('pulse-dot');addSimLog('Done',`${m.total_actions} actions`,'green');}
+  };
+}
+
+async function pollSimShots() {
+  while(simSessionId){
+    try{const d=await(await fetch(`${API}/simulate/screenshot/${simSessionId}`)).json();
+      if(d.image_b64) document.getElementById('sim-screenshot').src=`data:image/jpeg;base64,${d.image_b64}`;
+    }catch{} await new Promise(r=>setTimeout(r,2000));
+  }
+}
+
+function addSimCard(m) {
+  const log=document.getElementById('sim-action-log');
+  const a=m.action||{},r=m.result||{},ok=r.status==='ok';
+  const card=document.createElement('div');
+  card.className=`action-card rounded-lg p-2 border mb-1.5 ${ok?'bg-blue-50 border-blue-100':'bg-red-50 border-red-100'}`;
+  card.innerHTML=`
+    <div class="flex items-center gap-1.5">
+      <span class="w-4 h-4 rounded-full ${ok?'bg-blue-500':'bg-red-500'} text-white text-[9px] flex items-center justify-center font-bold">${m.step_number||'?'}</span>
+      <span class="text-[10px] font-bold uppercase">${a.type||'?'}</span>
+      <span class="text-[10px] text-gray-400">${m.step_name||''}</span></div>
+    ${a.url?`<p class="text-[10px] text-gray-500 font-mono truncate mt-0.5">${a.url}</p>`:''}
+    ${a.selector?`<p class="text-[10px] text-gray-500 mt-0.5">→ ${a.selector}</p>`:''}
+    ${m.expert_reasoning?`<p class="text-[10px] text-purple-500 mt-1">Why: ${m.expert_reasoning.slice(0,80)}</p>`:''}`;
+  log.appendChild(card);log.scrollTop=log.scrollHeight;
+}
+
+function addSimLog(t,d,c){
+  const log=document.getElementById('sim-action-log'),card=document.createElement('div');
+  card.className=`action-card rounded-lg p-2 border mb-1.5 bg-${c}-50 border-${c}-100`;
+  card.innerHTML=`<p class="text-xs font-semibold text-${c}-700">${t}</p><p class="text-[10px] text-${c}-500">${d}</p>`;
+  log.appendChild(card);
+}
+
+// ── Init ───────────────────────────────────────────────────────
+checkHealth(); setInterval(checkHealth,15000);
+</script>
+</body>
+</html>
