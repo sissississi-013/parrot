@@ -6,6 +6,13 @@ from ddtrace import tracer
 
 logger = logging.getLogger("parrot.twin")
 
+try:
+    from ddtrace.llmobs.decorators import agent, tool
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+    tool = agent
 
 class TwinAgent:
     """
@@ -24,6 +31,7 @@ class TwinAgent:
         self.model_id = model_id
     
     @tracer.wrap(service="parrot", resource="twin.guide_step")
+    @agent(name="twin_agent")
     async def guide_step(
         self,
         expert_workflow: Dict,
@@ -121,6 +129,7 @@ Provide coaching guidance in JSON format:
             raise Exception(f"Twin agent guidance failed: {str(e)}")
     
     @tracer.wrap(service="parrot", resource="twin.calculate_convergence")
+    @tool(name="calculate_convergence")
     async def calculate_convergence(
         self,
         expert_workflow: Dict,

@@ -566,18 +566,118 @@ class Neo4jClient:
                 "workflow_id": workflow_id,
             }
 
+    def get_full_graph(self) -> dict:
+        """Get the entire knowledge graph for visualization (all workflows)."""
+        with self._driver.session() as session:
+            result = session.run(
+                """
+                MATCH (e:Expert)-[:AUTHORED]->(w:Workflow)
+                OPTIONAL MATCH (w)-[hs:HAS_STEP]->(s:Step)
+                OPTIONAL MATCH (s)-[:DECIDED_BECAUSE]->(r:Reasoning)
+                OPTIONAL MATCH (s)-[:INVOLVES]->(a:Action)
+                OPTIONAL MATCH (s)-[:NEXT]->(next_s:Step)
+                RETURN e, w, s, r, a, next_s, hs.order AS step_order
+                ORDER BY w.created_at DESC, s.step_order
+                """
+            )
+
+            nodes = {}
+            edges = []
+
+            for rec in result:
+                if rec["e"] and rec["e"]["id"] not in nodes:
+                    nodes[rec["e"]["id"]] = {
+                        "id": rec["e"]["id"],
+                        "label": rec["e"]["id"],
+                        "type": "Expert",
+                        "color": "#4CAF50",
+                    }
+
+                if rec["w"] and rec["w"]["id"] not in nodes:
+                    nodes[rec["w"]["id"]] = {
+                        "id": rec["w"]["id"],
+                        "label": rec["w"]["name"],
+                        "type": "Workflow",
+                        "color": "#2196F3",
+                    }
+                    edges.append({
+                        "from": rec["e"]["id"],
+                        "to": rec["w"]["id"],
+                        "label": "AUTHORED",
+                    })
+
+                if rec["s"] and rec["s"]["id"] not in nodes:
+                    nodes[rec["s"]["id"]] = {
+                        "id": rec["s"]["id"],
+                        "label": rec["s"].get("name", ""),
+                        "type": "Step",
+                        "color": "#FF9800",
+                        "reasoning": rec["s"].get("reasoning", ""),
+                        "context": rec["s"].get("context", ""),
+                        "order": rec["s"].get("step_order", 0),
+                    }
+                    edges.append({
+                        "from": rec["w"]["id"],
+                        "to": rec["s"]["id"],
+                        "label": f"STEP {rec.get('step_order', '')}",
+                    })
+
+                if rec["r"] and rec["r"]["id"] not in nodes:
+                    nodes[rec["r"]["id"]] = {
+                        "id": rec["r"]["id"],
+                        "label": rec["r"]["explanation"][:60] + "..." if len(rec["r"]["explanation"]) > 60 else rec["r"]["explanation"],
+                        "type": "Reasoning",
+                        "color": "#9C27B0",
+                        "full_text": rec["r"]["explanation"],
+                    }
+                    edges.append({
+                        "from": rec["s"]["id"],
+                        "to": rec["r"]["id"],
+                        "label": "DECIDED_BECAUSE",
+                    })
+
+                if rec["a"] and rec["a"]["id"] not in nodes:
+                    nodes[rec["a"]["id"]] = {
+                        "id": rec["a"]["id"],
+                        "label": rec["a"].get("description", "")[:40],
+                        "type": "Action",
+                        "color": "#607D8B",
+                    }
+                    edges.append({
+                        "from": rec["s"]["id"],
+                        "to": rec["a"]["id"],
+                        "label": "INVOLVES",
+                    })
+
+                if rec["next_s"] and rec["s"]:
+                    edge_key = f"{rec['s']['id']}->{rec['next_s']['id']}"
+                    if not any(e.get("_key") == edge_key for e in edges):
+                        edges.append({
+                            "_key": edge_key,
+                            "from": rec["s"]["id"],
+                            "to": rec["next_s"]["id"],
+                            "label": "NEXT",
+                            "style": "dashed",
+                        })
+
+            return {
+                "nodes": list(nodes.values()),
+                "edges": edges,
+            }
+
     def get_convergence_graph(self, session_id: str) -> dict:
-        """Get convergence visualization: newbie actions vs expert steps."""
+        """Get convergence visualization: newbie actions vs expert steps + analysis text."""
         with self._driver.session() as session:
             result = session.run(
                 """
                 MATCH (n:Newbie)-[:ATTEMPTED]->(sess:Session {id: $sid})-[:FOLLOWING]->(w:Workflow)
                 OPTIONAL MATCH (w)-[:HAS_STEP]->(s:Step)
+                OPTIONAL MATCH (s)-[:DECIDED_BECAUSE]->(r:Reasoning)
                 OPTIONAL MATCH (sess)-[:PERFORMED]->(na:NewbieAction)
                 OPTIONAL MATCH (na)-[align:ALIGNS_WITH]->(s)
                 OPTIONAL MATCH (na)-[div:DIVERGES_FROM]->(s)
                 OPTIONAL MATCH (sess)-[:SCORED]->(c:ConvergenceScore)
-                RETURN n, sess, w, s, na, align, div, c
+                RETURN n, sess, w, s, r, na, align, div, c
                 ORDER BY s.step_order
                 """,
                 sid=session_id,
@@ -585,8 +685,24 @@ class Neo4jClient:
 
             nodes = {}
             edges = []
+            analysis = None
+            workflow_name = ""
 
             for rec in result:
+                # Capture workflow name
+                if rec["w"] and not workflow_name:
+                    workflow_name = rec["w"].get("name", "")
+
+                # Capture convergence analysis text (once)
+                if rec["c"] and not analysis:
+                    analysis = {
+                        "overall_score": rec["c"].get("overall_score", 0),
+                        "step_scores": rec["c"].get("step_scores", "[]"),
+                        "deviations": rec["c"].get("deviations", "[]"),
+                        "strengths": rec["c"].get("strengths", "[]"),
+                        "improvements": rec["c"].get("improvements", "[]"),
+                    }
+
                 # Expert step (green if matched, red if diverged)
                 if rec["s"] and rec["s"]["id"] not in nodes:
                     has_align = rec["align"] is not None
@@ -599,6 +715,9 @@ class Neo4jClient:
                         "type": "ExpertStep",
                         "color": color,
                         "order": rec["s"].get("step_order", 0),
+                        "reasoning": rec["s"].get("reasoning", ""),
+                        "context": rec["s"].get("context", ""),
+                        "expert_reasoning_full": rec["r"]["explanation"] if rec["r"] else "",
                     }
 
                 # Newbie action
@@ -608,6 +727,8 @@ class Neo4jClient:
                         "label": f"Newbie: Step {rec['na'].get('step_number', '?')}",
                         "type": "NewbieAction",
                         "color": "#03A9F4",
+                        "action_detail": rec["na"].get("action", ""),
+                        "step_number": rec["na"].get("step_number", 0),
                     }
 
                 # Alignment edge (green)
@@ -617,6 +738,7 @@ class Neo4jClient:
                         "to": rec["s"]["id"],
                         "label": f"ALIGNS ({rec['align'].get('score', 0):.0%})",
                         "color": "#4CAF50",
+                        "score": rec["align"].get("score", 0),
                     })
 
                 # Divergence edge (red)
@@ -626,12 +748,16 @@ class Neo4jClient:
                         "to": rec["s"]["id"],
                         "label": f"DIVERGES: {rec['div'].get('deviation', '')[:30]}",
                         "color": "#F44336",
+                        "deviation": rec["div"].get("deviation", ""),
+                        "impact": rec["div"].get("impact", ""),
                     })
 
             return {
                 "nodes": list(nodes.values()),
                 "edges": edges,
                 "session_id": session_id,
+                "workflow_name": workflow_name,
+                "analysis": analysis,
             }
 
     def get_reasoning_chain(self, workflow_id: str) -> list:

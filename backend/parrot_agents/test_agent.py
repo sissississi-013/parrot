@@ -7,6 +7,13 @@ from ddtrace import tracer
 logger = logging.getLogger("parrot.test")
 
 
+try:
+    from ddtrace.llmobs.decorators import agent
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+
 class TestAgent:
     """Simple test agent to verify Bedrock connection works."""
 
@@ -28,6 +35,7 @@ class TestAgent:
         )
     
     @tracer.wrap(service="parrot", resource="test.test_call")
+    @agent(name="test_agent")
     async def test_call(self, message: str) -> str:
         span = tracer.current_span()
         if span:

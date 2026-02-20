@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Parrot — Watch & Learn</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/3d-force-graph"></script>
   <script>
     tailwind.config = {
       theme: { extend: { colors: {
@@ -26,7 +26,10 @@
     ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 3px; }
     .mode-btn.active { background:white; color:#111; box-shadow:0 1px 3px rgba(0,0,0,.08); }
     .mode-btn { transition: all .15s; }
-    #vis-graph { width:100%; height:100%; min-height:400px; }
+    #vis-graph { width:100%; height:100%; min-height:400px; background: #0f172a; border-radius: 0; }
+    #dash-graph { width:100%; height:100%; min-height:400px; background: #0f172a; border-radius: 0; }
+    #dash-analysis { position:absolute; top:8px; right:8px; bottom:8px; width:360px; z-index:20; background:rgba(255,255,255,0.97); border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.25); overflow-y:auto; }
+    .scene-tooltip { font-family: Inter, sans-serif; font-size: 11px; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.95); color: #1e293b; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 250px; }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -45,6 +48,7 @@
         <button onclick="setMode('capture')" id="mode-capture" class="mode-btn active px-4 py-1.5 rounded-md text-xs font-semibold">Capture</button>
         <button onclick="setMode('workflows')" id="mode-workflows" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Workflows</button>
         <button onclick="setMode('simulate')" id="mode-simulate" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Simulate</button>
+        <button onclick="setMode('dashboard')" id="mode-dashboard" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Dashboard</button>
       </div>
       <div id="health-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-[11px] text-gray-400">
         <span class="w-1.5 h-1.5 rounded-full bg-gray-300"></span> ...
@@ -55,12 +59,11 @@
   <!-- Body -->
   <div class="flex flex-1 overflow-hidden">
 
-    <!-- ═══ MAIN AREA ═══ -->
+    <!-- MAIN AREA -->
     <div class="flex-1 overflow-hidden flex flex-col" id="main-area">
 
-      <!-- CAPTURE MAIN: Live browser view -->
+      <!-- CAPTURE MAIN -->
       <div id="main-capture" class="h-full flex flex-col">
-        <!-- Before recording -->
         <div id="cap-idle" class="flex-1 flex items-center justify-center">
           <div class="text-center max-w-sm">
             <img src="/static/parrotlogo.png" class="w-20 h-20 mx-auto mb-4 opacity-30" />
@@ -68,7 +71,6 @@
             <p class="text-sm text-gray-400">Enter a URL and hit <strong>Start</strong> in the sidebar. A browser will open — work in it and the agent captures every action.</p>
           </div>
         </div>
-        <!-- During recording: live browser view -->
         <div id="cap-browser" class="flex-1 hidden flex flex-col">
           <div class="px-3 py-1.5 bg-gray-800 flex items-center gap-3 shrink-0">
             <div class="flex gap-1.5">
@@ -101,11 +103,12 @@
           <div class="flex-1 relative">
             <div id="vis-graph"></div>
             <div class="absolute bottom-3 left-3 flex gap-3 bg-white/90 backdrop-blur rounded-lg px-3 py-2 border border-gray-100 shadow-sm">
-              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Expert</span>
-              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Workflow</span>
-              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded bg-orange-400"></span>Step</span>
-              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded bg-purple-500" style="clip-path:polygon(50% 0%,100% 100%,0% 100%)"></span>Reasoning</span>
-              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>Action</span>
+              <button onclick="loadFullGraph()" class="text-[10px] font-semibold bg-parrot-400 text-gray-900 px-2.5 py-1 rounded hover:brightness-110 transition">View All</button>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>Expert</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>Workflow</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded bg-orange-400 inline-block"></span>Step</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded bg-purple-500 inline-block" style="clip-path:polygon(50% 0%,100% 100%,0% 100%)"></span>Reasoning</span>
+              <span class="flex items-center gap-1 text-[10px] text-gray-500"><span class="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block"></span>Action</span>
             </div>
           </div>
           <div id="wf-reasoning" class="border-t border-gray-100 bg-white px-5 py-3 max-h-[180px] overflow-y-auto shrink-0 hidden"></div>
@@ -137,9 +140,28 @@
         </div>
       </div>
 
+      <!-- DASHBOARD MAIN -->
+      <div id="main-dashboard" class="h-full hidden flex flex-col">
+        <div id="dash-empty" class="flex-1 flex items-center justify-center">
+          <div class="text-center">
+            <div class="text-4xl mb-3 opacity-30">📊</div>
+            <p class="text-sm text-gray-400">Select a simulation session to see expert vs newbie comparison</p>
+          </div>
+        </div>
+        <div id="dash-content" class="h-full hidden flex flex-col">
+          <div id="dash-header" class="px-5 py-3 border-b border-gray-100 bg-white shrink-0"></div>
+          <div class="flex-1 relative overflow-hidden">
+            <div id="dash-graph"></div>
+            <div id="dash-analysis" class="hidden">
+              <div id="dash-analysis-content" class="p-4 space-y-4"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
-    <!-- ═══ RIGHT SIDEBAR (340px) ═══ -->
+    <!-- RIGHT SIDEBAR (340px) -->
     <div class="w-[340px] border-l border-gray-200 bg-white flex flex-col shrink-0">
 
       <!-- CAPTURE SIDEBAR -->
@@ -161,11 +183,9 @@
             </button>
           </div>
         </div>
-        <!-- Action Feed -->
         <div class="flex-1 overflow-y-auto p-3 space-y-1.5" id="action-feed">
           <p class="text-xs text-gray-300 text-center pt-10">Actions appear here in real-time as you work in the browser</p>
         </div>
-        <!-- Result -->
         <div id="cap-result" class="border-t border-gray-100 p-3 hidden shrink-0">
           <div id="cap-result-content" class="bg-parrot-50 rounded-lg p-3 text-xs"></div>
         </div>
@@ -208,6 +228,20 @@
         </div>
       </div>
 
+      <!-- DASHBOARD SIDEBAR -->
+      <div id="sidebar-dashboard" class="flex-col h-full hidden">
+        <div class="p-4 border-b border-gray-100 shrink-0">
+          <h3 class="text-sm font-semibold text-gray-900 mb-2">Simulation Dashboard</h3>
+          <p class="text-[10px] text-gray-400">Agent simulation runs — expert vs newbie convergence</p>
+        </div>
+        <div id="dash-session-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+          <p class="text-xs text-gray-300 text-center pt-8">Loading sessions...</p>
+        </div>
+        <div id="dash-score-summary" class="border-t border-gray-100 p-3 shrink-0 hidden">
+          <div id="dash-score-content" class="text-xs"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -216,7 +250,7 @@
 const API = '';
 let capSessionId = null, capWs = null;
 let simSessionId = null, simWs = null;
-let visNetwork = null;
+let graphInstances = {};  // {containerId: ForceGraph3D instance}
 
 // ── Health ─────────────────────────────────────────────────────
 async function checkHealth() {
@@ -231,7 +265,7 @@ async function checkHealth() {
 
 // ── Mode Switch ────────────────────────────────────────────────
 function setMode(mode) {
-  ['capture','workflows','simulate'].forEach(m => {
+  ['capture','workflows','simulate','dashboard'].forEach(m => {
     document.getElementById(`main-${m}`).classList.toggle('hidden', m !== mode);
     document.getElementById(`sidebar-${m}`).classList.toggle('hidden', m !== mode);
     document.getElementById(`sidebar-${m}`).classList.toggle('flex', m === mode);
@@ -241,6 +275,7 @@ function setMode(mode) {
   });
   if (mode === 'workflows') loadWorkflows();
   if (mode === 'simulate') loadSimWorkflows();
+  if (mode === 'dashboard') loadDashboard();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -251,18 +286,13 @@ async function startBrowserCapture() {
   const url = document.getElementById('cap-url').value || 'https://www.google.com';
   const userId = document.getElementById('cap-user').value;
   const taskType = document.getElementById('cap-task').value;
-
   document.getElementById('btn-cap-start').textContent = 'Launching...';
-
   try {
     const d = await (await fetch(`${API}/browser/start`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ user_id: userId, task_type: taskType, start_url: url }),
     })).json();
-
     capSessionId = d.session_id;
-
-    // Show browser view
     document.getElementById('cap-idle').classList.add('hidden');
     document.getElementById('cap-browser').classList.remove('hidden');
     document.getElementById('cap-url-bar').textContent = url;
@@ -270,45 +300,31 @@ async function startBrowserCapture() {
     document.getElementById('btn-cap-stop').classList.remove('hidden');
     document.getElementById('cap-result').classList.add('hidden');
     document.getElementById('action-feed').innerHTML = '';
-
-    // Connect WebSocket
     connectBrowserWs(capSessionId);
-
-  } catch (e) {
-    alert('Failed to launch browser: ' + e.message);
-  }
+  } catch (e) { alert('Failed to launch browser: ' + e.message); }
   document.getElementById('btn-cap-start').textContent = 'Start';
 }
 
 async function stopBrowserCapture() {
   if (!capSessionId) return;
   if (capWs) capWs.close();
-
   document.getElementById('btn-cap-stop').textContent = 'Processing...';
-
   try {
     const d = await (await fetch(`${API}/browser/stop/${capSessionId}?auto_process=true`, {method:'POST'})).json();
-
     document.getElementById('btn-cap-stop').classList.add('hidden');
     document.getElementById('btn-cap-stop').textContent = 'Stop & Learn';
     document.getElementById('btn-cap-start').classList.remove('hidden');
-
     if (d.workflow) {
       const r = document.getElementById('cap-result');
       r.classList.remove('hidden');
       document.getElementById('cap-result-content').innerHTML = `
         <div class="flex items-center gap-1.5 mb-1">
-          <span>✅</span>
           <span class="font-semibold text-gray-900">${d.workflow.workflow_name}</span>
         </div>
-        <p class="text-gray-500">${d.workflow.steps?.length || 0} steps learned · ${d.stored_in_neo4j ? 'Saved to Neo4j' : ''}</p>
-        <p class="text-gray-400 mt-1">${d.actions_captured} actions captured</p>
-      `;
+        <p class="text-gray-500">${d.workflow.steps?.length || 0} steps learned ${d.stored_in_neo4j ? '· Saved to Neo4j' : ''}</p>
+        <p class="text-gray-400 mt-1">${d.actions_captured} actions captured</p>`;
     }
-  } catch (e) {
-    alert('Stop failed: ' + e.message);
-    document.getElementById('btn-cap-stop').textContent = 'Stop & Learn';
-  }
+  } catch (e) { alert('Stop failed: ' + e.message); document.getElementById('btn-cap-stop').textContent = 'Stop & Learn'; }
   capSessionId = null;
 }
 
@@ -317,56 +333,28 @@ function connectBrowserWs(sessionId) {
   capWs = new WebSocket(`${proto}//${location.host}/ws/browser/${sessionId}`);
   capWs.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-
-    if (msg.type === 'screenshot' && msg.image_b64) {
-      document.getElementById('cap-screenshot').src = `data:image/jpeg;base64,${msg.image_b64}`;
-    }
-
-    if (msg.type === 'action') {
-      addBrowserAction(msg.action);
-    }
-
-    if (msg.type === 'status') {
-      document.getElementById('cap-url-bar').textContent = msg.url || '';
-      document.getElementById('cap-action-count').textContent = `${msg.actions} actions`;
-    }
-
-    if (msg.type === 'stopped') {
-      document.getElementById('cap-action-count').textContent = `${msg.total_actions} actions (done)`;
-    }
+    if (msg.type === 'screenshot' && msg.image_b64) document.getElementById('cap-screenshot').src = `data:image/jpeg;base64,${msg.image_b64}`;
+    if (msg.type === 'action') addBrowserAction(msg.action);
+    if (msg.type === 'status') { document.getElementById('cap-url-bar').textContent = msg.url || ''; document.getElementById('cap-action-count').textContent = `${msg.actions} actions`; }
+    if (msg.type === 'stopped') document.getElementById('cap-action-count').textContent = `${msg.total_actions} actions (done)`;
   };
   capWs.onclose = () => { capWs = null; };
 }
 
 function addBrowserAction(action) {
   const feed = document.getElementById('action-feed');
-  // Remove placeholder
   if (feed.querySelector('p.text-gray-300')) feed.innerHTML = '';
-
-  const colors = {
-    click: 'bg-blue-50 text-blue-700 border-blue-100',
-    type: 'bg-green-50 text-green-700 border-green-100',
-    navigate: 'bg-purple-50 text-purple-700 border-purple-100',
-    submit: 'bg-red-50 text-red-700 border-red-100',
-    scroll: 'bg-gray-50 text-gray-500 border-gray-100',
-  };
+  const colors = { click:'bg-blue-50 text-blue-700 border-blue-100', type:'bg-green-50 text-green-700 border-green-100', navigate:'bg-purple-50 text-purple-700 border-purple-100', submit:'bg-red-50 text-red-700 border-red-100', scroll:'bg-gray-50 text-gray-500 border-gray-100' };
   const c = colors[action.type] || 'bg-gray-50 text-gray-600 border-gray-100';
-
   const card = document.createElement('div');
   card.className = `action-card rounded-lg p-2 border ${c}`;
-  card.innerHTML = `
-    <div class="flex items-center gap-1.5">
-      <span class="text-[10px] font-bold uppercase tracking-wide">${action.type}</span>
-      <span class="text-[10px] opacity-50">#${action.action_index ?? ''}</span>
-    </div>
-    <p class="text-[11px] font-medium leading-snug mt-0.5">${action.description || ''}</p>
-  `;
+  card.innerHTML = `<div class="flex items-center gap-1.5"><span class="text-[10px] font-bold uppercase tracking-wide">${action.type}</span><span class="text-[10px] opacity-50">#${action.action_index ?? ''}</span></div><p class="text-[11px] font-medium leading-snug mt-0.5">${action.description || ''}</p>`;
   feed.appendChild(card);
   feed.scrollTop = feed.scrollHeight;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// WORKFLOWS + vis.js
+// WORKFLOWS + 3D Knowledge Graph
 // ═══════════════════════════════════════════════════════════════
 
 async function loadWorkflows() {
@@ -407,7 +395,6 @@ async function selectWorkflow(wid) {
 
   document.getElementById('wf-empty').classList.add('hidden');
   document.getElementById('wf-content').classList.remove('hidden');
-
   document.getElementById('wf-header').innerHTML = `
     <div class="flex items-center justify-between">
       <div><h2 class="text-sm font-bold text-gray-900">${wf.workflow_name}</h2>
@@ -418,7 +405,7 @@ async function selectWorkflow(wid) {
       </div>
     </div>`;
 
-  renderVisGraph(gd);
+  renderGraph3D(gd, 'vis-graph');
 
   const chain = re.reasoning_chain||[];
   const rp = document.getElementById('wf-reasoning');
@@ -435,41 +422,92 @@ async function selectWorkflow(wid) {
   document.getElementById('wf-step-detail').classList.add('hidden');
 }
 
-function renderVisGraph(data) {
-  const container = document.getElementById('vis-graph');
-  const shapes={Expert:'circle',Workflow:'box',Step:'diamond',Reasoning:'triangle',Action:'dot'};
-  const colors={Expert:'#22c55e',Workflow:'#3b82f6',Step:'#f59e0b',Reasoning:'#a855f7',Action:'#9ca3af'};
-  const sizes={Expert:25,Workflow:30,Step:22,Reasoning:18,Action:14};
+async function loadFullGraph() {
+  try {
+    document.getElementById('wf-empty').classList.add('hidden');
+    document.getElementById('wf-content').classList.remove('hidden');
+    document.getElementById('wf-header').innerHTML = `
+      <div class="flex items-center justify-between">
+        <div><h2 class="text-sm font-bold text-gray-900">Full Knowledge Graph</h2>
+          <p class="text-[11px] text-gray-500 mt-0.5">All experts, workflows, steps, reasoning, and actions from Neo4j</p></div>
+      </div>`;
+    document.getElementById('wf-reasoning').classList.add('hidden');
+    const gd = await (await fetch(`${API}/graph/full`)).json();
+    renderGraph3D(gd, 'vis-graph');
+  } catch (e) { alert('Failed to load full graph: ' + e.message); }
+}
 
-  const nodes=(data.nodes||[]).map(n=>({
-    id:n.id, label:(n.label||'').slice(0,28), shape:shapes[n.type]||'dot',
-    color:{background:colors[n.type]||'#ccc',border:colors[n.type]||'#ccc',highlight:{background:'#facc15',border:'#eab308'}},
-    size:sizes[n.type]||16, font:{size:11,color:'#374151',face:'Inter'},
-    title:n.full_text||n.label||'', _data:n
-  }));
-  const edges=(data.edges||[]).map(e=>({
-    from:e.from,to:e.to,label:e.label||'',
-    font:{size:9,color:'#9ca3af',align:'middle'},
-    color:{color:e.color||'#d1d5db',highlight:'#facc15'},
-    arrows:'to',dashes:e.style==='dashed',smooth:{type:'cubicBezier',roundness:.4}
+// ── 3D Force Graph Renderer ───────────────────────────────────
+function renderGraph3D(data, containerId) {
+  const container = document.getElementById(containerId);
+
+  const nodeColors = { Expert:'#22c55e', Workflow:'#3b82f6', Step:'#f59e0b', Reasoning:'#a855f7', Action:'#9ca3af', ExpertStep:'#22c55e', NewbieAction:'#38bdf8' };
+  const nodeSizes = { Expert:8, Workflow:12, Step:7, Reasoning:5, Action:3, ExpertStep:7, NewbieAction:5 };
+
+  const nodes = (data.nodes || []).map(n => ({
+    ...n,
+    color: nodeColors[n.type] || '#ccc',
+    val: nodeSizes[n.type] || 4,
   }));
 
-  if(visNetwork) visNetwork.destroy();
-  visNetwork = new vis.Network(container,
-    {nodes:new vis.DataSet(nodes),edges:new vis.DataSet(edges)},
-    {layout:{hierarchical:{enabled:true,direction:'LR',sortMethod:'directed',nodeSpacing:110,levelSeparation:170}},
-     physics:{enabled:false},interaction:{hover:true,tooltipDelay:100,zoomView:true,dragView:true},edges:{width:1.5}}
-  );
-  visNetwork.on('click',(p)=>{
-    if(p.nodes.length){const n=nodes.find(x=>x.id===p.nodes[0]);if(n)showNodeDetail(n._data);}
+  const links = (data.edges || []).map(e => ({
+    source: e.from,
+    target: e.to,
+    label: e.label || '',
+    color: e.color || '#4b5563',
+  }));
+
+  // Destroy previous instance
+  if (graphInstances[containerId]) {
+    graphInstances[containerId]._destructor();
+    container.innerHTML = '';
+  }
+
+  const graph = ForceGraph3D()(container)
+    .graphData({ nodes, links })
+    .nodeColor(n => n.color)
+    .nodeVal(n => n.val)
+    .nodeLabel(n => `<div class="scene-tooltip"><b>${n.type || ''}</b><br/>${(n.label || '').slice(0, 80)}</div>`)
+    .nodeOpacity(0.92)
+    .linkColor(l => l.color || '#4b5563')
+    .linkWidth(1.5)
+    .linkDirectionalArrowLength(4)
+    .linkDirectionalArrowRelPos(1)
+    .linkLabel(l => l.label)
+    .linkOpacity(0.5)
+    .backgroundColor('#0f172a')
+    .width(container.clientWidth)
+    .height(container.clientHeight)
+    .onNodeClick(node => {
+      showNodeDetail(node);
+      // Zoom to node
+      const distance = 120;
+      const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
+      graph.cameraPosition(
+        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+        node, 1000
+      );
+    });
+
+  // Inclined camera view after layout settles
+  setTimeout(() => {
+    graph.cameraPosition({ x: 0, y: 200, z: 350 }, { x: 0, y: 0, z: 0 }, 2000);
+  }, 800);
+
+  graphInstances[containerId] = graph;
+
+  // Handle resize
+  const ro = new ResizeObserver(() => {
+    graph.width(container.clientWidth).height(container.clientHeight);
   });
+  ro.observe(container);
 }
 
 function showNodeDetail(n) {
-  const p=document.getElementById('wf-step-detail'); p.classList.remove('hidden');
-  const tc={Expert:'green',Workflow:'blue',Step:'orange',Reasoning:'purple',Action:'gray'};
-  const c=tc[n.type]||'gray';
-  p.innerHTML=`
+  const p = document.getElementById('wf-step-detail'); p.classList.remove('hidden');
+  const tc = {Expert:'green',Workflow:'blue',Step:'orange',Reasoning:'purple',Action:'gray'};
+  const c = tc[n.type] || 'gray';
+  p.innerHTML = `
     <div class="flex items-center gap-2 mb-2">
       <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-${c}-100 text-${c}-700">${n.type}</span>
       <span class="text-xs font-semibold text-gray-900">${n.label}</span></div>
@@ -484,89 +522,277 @@ function showNodeDetail(n) {
 
 async function loadSimWorkflows() {
   try {
-    const d=await(await fetch(`${API}/graph/workflows`)).json();
-    const sel=document.getElementById('sim-workflow');
-    sel.innerHTML='<option value="">Select workflow...</option>';
-    (d.workflows||[]).forEach(w=>{sel.innerHTML+=`<option value="${w.id}">${w.name} (${w.step_count||'?'} steps)</option>`;});
+    const d = await (await fetch(`${API}/graph/workflows`)).json();
+    const sel = document.getElementById('sim-workflow');
+    sel.innerHTML = '<option value="">Select workflow...</option>';
+    (d.workflows||[]).forEach(w => { sel.innerHTML += `<option value="${w.id}">${w.name} (${w.step_count||'?'} steps)</option>`; });
   } catch {}
 }
 
 async function startSimulation() {
-  const wid=document.getElementById('sim-workflow').value;
-  if(!wid) return alert('Select a workflow');
-  const url=document.getElementById('sim-url-input').value||'https://www.google.com';
-  document.getElementById('btn-sim-start').textContent='Launching...';
+  const wid = document.getElementById('sim-workflow').value;
+  if (!wid) return alert('Select a workflow');
+  const url = document.getElementById('sim-url-input').value || 'https://www.google.com';
+  document.getElementById('btn-sim-start').textContent = 'Launching...';
   try {
-    const d=await(await fetch(`${API}/simulate/start`,{method:'POST',headers:{'Content-Type':'application/json'},
+    const d = await (await fetch(`${API}/simulate/start`, {method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({workflow_id:wid,start_url:url})})).json();
-    simSessionId=d.session_id;
+    simSessionId = d.session_id;
     document.getElementById('btn-sim-start').classList.add('hidden');
     document.getElementById('btn-sim-stop').classList.remove('hidden');
     document.getElementById('sim-empty').classList.add('hidden');
     document.getElementById('sim-browser').classList.remove('hidden');
-    document.getElementById('sim-step-badge').textContent=`Step 0/${d.total_steps}`;
-    document.getElementById('sim-action-log').innerHTML='';
+    document.getElementById('sim-step-badge').textContent = `Step 0/${d.total_steps}`;
+    document.getElementById('sim-action-log').innerHTML = '';
     connectSimWs(simSessionId);
     pollSimShots();
   } catch(e) { alert('Failed: '+e.message); }
-  document.getElementById('btn-sim-start').textContent='Launch';
+  document.getElementById('btn-sim-start').textContent = 'Launch';
 }
 
 async function stopSimulation() {
-  if(!simSessionId) return;
-  if(simWs) simWs.close();
-  await fetch(`${API}/simulate/stop/${simSessionId}`,{method:'POST'});
+  if (!simSessionId) return;
+  if (simWs) simWs.close();
+  await fetch(`${API}/simulate/stop/${simSessionId}`, {method:'POST'});
   document.getElementById('btn-sim-stop').classList.add('hidden');
   document.getElementById('btn-sim-start').classList.remove('hidden');
   document.getElementById('sim-status-dot').classList.remove('pulse-dot');
-  simSessionId=null;
+  simSessionId = null;
 }
 
 function connectSimWs(sid) {
-  const proto=location.protocol==='https:'?'wss:':'ws:';
-  simWs=new WebSocket(`${proto}//${location.host}/ws/simulate/${sid}`);
-  simWs.onmessage=(e)=>{
-    const m=JSON.parse(e.data);
-    if(m.type==='screenshot'&&m.image_b64) document.getElementById('sim-screenshot').src=`data:image/jpeg;base64,${m.image_b64}`;
-    if(m.type==='action') addSimCard(m);
-    if(m.type==='status') document.getElementById('sim-step-badge').textContent=`Step ${m.current_step}/${m.total_steps}`;
-    if(m.type==='completed'){document.getElementById('sim-status-dot').classList.remove('pulse-dot');addSimLog('Done',`${m.total_actions} actions`,'green');}
+  const proto = location.protocol==='https:'?'wss:':'ws:';
+  simWs = new WebSocket(`${proto}//${location.host}/ws/simulate/${sid}`);
+  simWs.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type==='screenshot' && m.image_b64) document.getElementById('sim-screenshot').src = `data:image/jpeg;base64,${m.image_b64}`;
+    if (m.type==='action') addSimCard(m);
+    if (m.type==='status') document.getElementById('sim-step-badge').textContent = `Step ${m.current_step}/${m.total_steps}`;
+    if (m.type==='completed') { document.getElementById('sim-status-dot').classList.remove('pulse-dot'); addSimLog('Done',`${m.total_actions} actions`,'green'); }
   };
 }
 
 async function pollSimShots() {
-  while(simSessionId){
-    try{const d=await(await fetch(`${API}/simulate/screenshot/${simSessionId}`)).json();
-      if(d.image_b64) document.getElementById('sim-screenshot').src=`data:image/jpeg;base64,${d.image_b64}`;
-    }catch{} await new Promise(r=>setTimeout(r,2000));
+  while (simSessionId) {
+    try { const d = await (await fetch(`${API}/simulate/screenshot/${simSessionId}`)).json();
+      if (d.image_b64) document.getElementById('sim-screenshot').src = `data:image/jpeg;base64,${d.image_b64}`;
+    } catch {} await new Promise(r=>setTimeout(r,2000));
   }
 }
 
 function addSimCard(m) {
-  const log=document.getElementById('sim-action-log');
-  const a=m.action||{},r=m.result||{},ok=r.status==='ok';
-  const card=document.createElement('div');
-  card.className=`action-card rounded-lg p-2 border mb-1.5 ${ok?'bg-blue-50 border-blue-100':'bg-red-50 border-red-100'}`;
-  card.innerHTML=`
+  const log = document.getElementById('sim-action-log');
+  const a=m.action||{}, r=m.result||{}, ok=r.status==='ok';
+  const card = document.createElement('div');
+  card.className = `action-card rounded-lg p-2 border mb-1.5 ${ok?'bg-blue-50 border-blue-100':'bg-red-50 border-red-100'}`;
+  card.innerHTML = `
     <div class="flex items-center gap-1.5">
       <span class="w-4 h-4 rounded-full ${ok?'bg-blue-500':'bg-red-500'} text-white text-[9px] flex items-center justify-center font-bold">${m.step_number||'?'}</span>
       <span class="text-[10px] font-bold uppercase">${a.type||'?'}</span>
       <span class="text-[10px] text-gray-400">${m.step_name||''}</span></div>
     ${a.url?`<p class="text-[10px] text-gray-500 font-mono truncate mt-0.5">${a.url}</p>`:''}
-    ${a.selector?`<p class="text-[10px] text-gray-500 mt-0.5">→ ${a.selector}</p>`:''}
+    ${a.selector?`<p class="text-[10px] text-gray-500 mt-0.5">${a.selector}</p>`:''}
     ${m.expert_reasoning?`<p class="text-[10px] text-purple-500 mt-1">Why: ${m.expert_reasoning.slice(0,80)}</p>`:''}`;
-  log.appendChild(card);log.scrollTop=log.scrollHeight;
+  log.appendChild(card); log.scrollTop = log.scrollHeight;
 }
 
-function addSimLog(t,d,c){
-  const log=document.getElementById('sim-action-log'),card=document.createElement('div');
-  card.className=`action-card rounded-lg p-2 border mb-1.5 bg-${c}-50 border-${c}-100`;
-  card.innerHTML=`<p class="text-xs font-semibold text-${c}-700">${t}</p><p class="text-[10px] text-${c}-500">${d}</p>`;
+function addSimLog(t,d,c) {
+  const log = document.getElementById('sim-action-log'), card = document.createElement('div');
+  card.className = `action-card rounded-lg p-2 border mb-1.5 bg-${c}-50 border-${c}-100`;
+  card.innerHTML = `<p class="text-xs font-semibold text-${c}-700">${t}</p><p class="text-[10px] text-${c}-500">${d}</p>`;
   log.appendChild(card);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD — Convergence
+// ═══════════════════════════════════════════════════════════════
+
+async function loadDashboard() {
+  try {
+    const d = await (await fetch(`${API}/graph/convergence`)).json();
+    renderDashboardSessions(d.scores || []);
+  } catch {
+    document.getElementById('dash-session-list').innerHTML = '<p class="text-xs text-red-400 text-center">Failed to load sessions</p>';
+  }
+}
+
+function renderDashboardSessions(scores) {
+  const list = document.getElementById('dash-session-list');
+  if (!scores.length) {
+    list.innerHTML = '<p class="text-xs text-gray-300 text-center pt-8">No simulation sessions yet. Run a simulation first.</p>';
+    return;
+  }
+  list.innerHTML = scores.map(s => {
+    const pct = Math.round((s.score || 0) * 100);
+    const col = pct >= 70 ? 'green' : pct >= 40 ? 'yellow' : 'red';
+    return `
+      <button onclick="selectDashSession('${s.session_id}')" class="w-full text-left p-2.5 rounded-lg border border-gray-100 hover:border-parrot-300 hover:bg-parrot-50/50 transition group">
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-semibold text-gray-900 group-hover:text-parrot-700">${s.workflow_name || 'Unknown Workflow'}</p>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-${col}-100 text-${col}-700">${pct}%</span>
+        </div>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="text-[10px] text-gray-400">${s.newbie_id || 'agent'}</span>
+          <span class="text-[10px] text-gray-300">${s.timestamp ? new Date(s.timestamp).toLocaleDateString() : ''}</span>
+        </div>
+        <div class="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full rounded-full bg-${col}-400" style="width:${pct}%"></div>
+        </div>
+      </button>`;
+  }).join('');
+}
+
+async function selectDashSession(sessionId) {
+  try {
+    const d = await (await fetch(`${API}/graph/sessions/${sessionId}/convergence`)).json();
+
+    document.getElementById('dash-empty').classList.add('hidden');
+    document.getElementById('dash-content').classList.remove('hidden');
+
+    const a = d.analysis || {};
+    const overallPct = Math.round((a.overall_score || 0) * 100);
+    const scoreCol = overallPct >= 70 ? 'green' : overallPct >= 40 ? 'yellow' : 'red';
+
+    document.getElementById('dash-header').innerHTML = `
+      <div class="flex items-center justify-between">
+        <div><h2 class="text-sm font-bold text-gray-900">${d.workflow_name || 'Session Convergence'}</h2>
+          <p class="text-[11px] text-gray-500 mt-0.5">Expert steps (green) vs Newbie actions (blue) — click nodes for detail</p></div>
+        <div class="flex items-center gap-3">
+          <span class="text-[10px] text-gray-400">${sessionId.slice(0, 8)}...</span>
+          <span class="text-sm font-bold px-3 py-1 rounded-full bg-${scoreCol}-100 text-${scoreCol}-700">${overallPct}%</span>
+        </div>
+      </div>`;
+
+    // Render the 3D convergence graph (full width, panel overlays on top)
+    renderGraph3D(d, 'dash-graph');
+
+    // Build and show the textual analysis overlay panel
+    const panel = document.getElementById('dash-analysis');
+    const content = document.getElementById('dash-analysis-content');
+    buildAnalysisPanel(d, a, overallPct, scoreCol, content);
+    panel.classList.remove('hidden');
+
+  } catch (e) { alert('Failed to load convergence: ' + e.message); }
+}
+
+function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
+    const stepScores = safeParse(a.step_scores);
+    const deviations = safeParse(a.deviations);
+    const strengths = safeParse(a.strengths);
+    const improvements = safeParse(a.improvements);
+    const expertSteps = (d.nodes || []).filter(n => n.type === 'ExpertStep').sort((x,y) => (x.order||0) - (y.order||0));
+
+    let html = '';
+
+    // Overall score with visual ring
+    html += `
+      <div class="text-center pb-3 border-b border-gray-100">
+        <div class="relative inline-flex items-center justify-center w-16 h-16">
+          <svg class="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15.91" fill="none" stroke="#e5e7eb" stroke-width="2.5"/>
+            <circle cx="18" cy="18" r="15.91" fill="none" stroke="${scoreCol==='green'?'#22c55e':scoreCol==='yellow'?'#eab308':'#ef4444'}"
+              stroke-width="2.5" stroke-dasharray="${overallPct} ${100-overallPct}" stroke-linecap="round"/>
+          </svg>
+          <span class="absolute text-sm font-bold text-gray-900">${overallPct}%</span>
+        </div>
+        <p class="text-[10px] text-gray-400 mt-1">Overall Convergence</p>
+      </div>`;
+
+    // How convergence is calculated
+    html += `
+      <div class="bg-blue-50 rounded-lg p-3 border border-blue-100">
+        <p class="text-[10px] font-semibold text-blue-800 mb-1">How is this calculated?</p>
+        <p class="text-[10px] text-blue-600 leading-relaxed">
+          The AI Twin Agent compares each simulator action against the expert's original steps.
+          It evaluates <b>intent alignment</b> (did the newbie try the right thing?),
+          <b>execution accuracy</b> (correct target/input?), and <b>sequencing</b> (right order?).
+          Each step gets a 0-100% score; the overall score is the weighted average.
+        </p>
+      </div>`;
+
+    // Per-step breakdown
+    if (stepScores.length) {
+      html += `<div>
+        <h4 class="text-[11px] font-bold text-gray-800 mb-2">Step-by-Step Breakdown</h4>
+        <div class="space-y-2">`;
+      for (const ss of stepScores) {
+        const sPct = Math.round((ss.score || 0) * 100);
+        const sCol = sPct >= 70 ? 'green' : sPct >= 40 ? 'yellow' : 'red';
+        const matched = ss.matched;
+        const expert = expertSteps.find(e => e.order === ss.step);
+        const stepDev = deviations.find(dv => dv.step === ss.step);
+        html += `
+          <div class="rounded-lg border ${matched ? 'border-green-200 bg-green-50/50' : 'border-red-200 bg-red-50/50'} p-2.5">
+            <div class="flex items-center justify-between mb-1">
+              <div class="flex items-center gap-1.5">
+                <span class="w-5 h-5 rounded-full ${matched?'bg-green-500':'bg-red-500'} text-white text-[9px] flex items-center justify-center font-bold">${ss.step}</span>
+                <span class="text-[11px] font-semibold text-gray-800">${expert ? expert.label.replace('Expert: ','') : 'Step '+ss.step}</span>
+              </div>
+              <span class="text-[10px] font-bold text-${sCol}-700">${sPct}%</span>
+            </div>
+            <div class="h-1 bg-gray-200 rounded-full overflow-hidden mb-1.5">
+              <div class="h-full rounded-full bg-${sCol}-400" style="width:${sPct}%"></div>
+            </div>
+            ${expert && expert.reasoning ? `<p class="text-[10px] text-purple-600 mb-1"><b>Expert reasoning:</b> ${expert.reasoning}</p>` : ''}
+            ${expert && expert.context ? `<p class="text-[10px] text-gray-500 mb-1"><b>Context:</b> ${expert.context}</p>` : ''}
+            ${stepDev ? `<p class="text-[10px] text-red-600"><b>Deviation:</b> ${stepDev.issue} <span class="px-1 py-0.5 rounded text-[9px] bg-red-100 text-red-700">${stepDev.impact}</span></p>` : `<p class="text-[10px] text-green-600">Aligned with expert step</p>`}
+          </div>`;
+      }
+      html += `</div></div>`;
+    }
+
+    // Strengths
+    if (strengths.length) {
+      html += `<div>
+        <h4 class="text-[11px] font-bold text-green-800 mb-1.5">Strengths</h4>
+        <ul class="space-y-1">
+          ${strengths.map(s => `<li class="text-[10px] text-green-700 flex gap-1.5"><span class="shrink-0 mt-0.5 w-1 h-1 rounded-full bg-green-400"></span>${s}</li>`).join('')}
+        </ul></div>`;
+    }
+
+    // Deviations summary
+    if (deviations.length) {
+      html += `<div>
+        <h4 class="text-[11px] font-bold text-red-800 mb-1.5">Deviations</h4>
+        <ul class="space-y-1.5">
+          ${deviations.map(dv => `
+            <li class="text-[10px] text-red-700 flex gap-1.5">
+              <span class="shrink-0 mt-0.5 w-1 h-1 rounded-full bg-red-400"></span>
+              <span><b>Step ${dv.step}:</b> ${dv.issue} <span class="px-1 py-0.5 rounded text-[9px] bg-red-100">${dv.impact}</span></span>
+            </li>`).join('')}
+        </ul></div>`;
+    }
+
+    // Areas for improvement
+    if (improvements.length) {
+      html += `<div>
+        <h4 class="text-[11px] font-bold text-amber-800 mb-1.5">Areas for Improvement</h4>
+        <ul class="space-y-1">
+          ${improvements.map(i => `<li class="text-[10px] text-amber-700 flex gap-1.5"><span class="shrink-0 mt-0.5 w-1 h-1 rounded-full bg-amber-400"></span>${i}</li>`).join('')}
+        </ul></div>`;
+    }
+
+    content.innerHTML = html;
+}
+
+// Parse stringified arrays stored in Neo4j properties (Python str() format)
+function safeParse(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val !== 'string') return [];
+  try {
+    // Python str() uses single quotes, True/False/None instead of JSON's true/false/null
+    const jsonStr = val
+      .replace(/'/g, '"')
+      .replace(/\bTrue\b/g, 'true')
+      .replace(/\bFalse\b/g, 'false')
+      .replace(/\bNone\b/g, 'null');
+    return JSON.parse(jsonStr);
+  } catch { return []; }
+}
+
 // ── Init ───────────────────────────────────────────────────────
-checkHealth(); setInterval(checkHealth,15000);
+checkHealth(); setInterval(checkHealth, 15000);
 </script>
 </body>
 </html>

@@ -14,6 +14,14 @@ import time
 from typing import Dict, List, Optional, Callable
 from uuid import uuid4
 
+try:
+    from ddtrace.llmobs.decorators import agent, workflow, tool
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+    workflow = tool = agent
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +60,7 @@ class SimulatorAgent:
         self.model_id = model_id
         self._sessions: Dict[str, SimulationSession] = {}
 
+    @agent(name="simulator_agent")
     async def start_simulation(
         self,
         workflow: Dict,
@@ -123,6 +132,7 @@ class SimulatorAgent:
     def get_session(self, session_id: str) -> Optional[SimulationSession]:
         return self._sessions.get(session_id)
 
+    @workflow(name="simulation_loop")
     async def _simulation_loop(
         self,
         session: SimulationSession,
@@ -204,6 +214,7 @@ class SimulatorAgent:
         session.status = "completed"
         logger.info(f"Simulation {session.session_id} completed: {len(session.action_log)} actions")
 
+    @tool(name="plan_actions")
     async def _plan_actions(
         self, step: Dict, current_url: str, screenshot_b64: str
     ) -> List[Dict]:
@@ -274,6 +285,7 @@ Respond with ONLY the JSON array, no explanation."""
             logger.error(f"Action planning failed: {e}")
             return [{"type": "wait", "seconds": 2}]
 
+    @tool(name="execute_action")
     async def _execute_action(self, session: SimulationSession, action: Dict) -> Dict:
         """Execute a single browser action via Playwright."""
         page = session.page

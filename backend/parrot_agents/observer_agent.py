@@ -9,6 +9,14 @@ from ddtrace import tracer
 
 logger = logging.getLogger("parrot.observer")
 
+try:
+    from ddtrace.llmobs.decorators import agent, tool
+except ImportError:
+    def agent(**kw):
+        def _d(f): return f
+        return _d
+    tool = agent
+
 
 def _sanitize_for_json(obj):
     """Remove control characters from strings in nested data structures."""
@@ -37,6 +45,7 @@ class ObserverAgent:
         self.model_id = model_id
     
     @tracer.wrap(service="parrot", resource="observer.process_session")
+    @agent(name="observer_agent")
     async def process_session(self, actions: List[Dict], session_metadata: Dict) -> Dict:
         span = tracer.current_span()
         task_type = session_metadata.get("task_type", "unknown")
@@ -150,6 +159,7 @@ Respond in JSON format:
         return json.loads(text.strip())
     
     @tracer.wrap(service="parrot", resource="observer.generate_reasoning")
+    @tool(name="generate_reasoning")
     async def generate_reasoning(self, action: Dict, context: Dict) -> str:
         span = tracer.current_span()
         if span:
