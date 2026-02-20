@@ -1,6 +1,3 @@
-import os
-os.environ.setdefault("DD_TRACE_OPENAI_AGENTS_ENABLED", "false")
-
 import asyncio
 import json
 import logging
@@ -17,7 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
-from agents import TestAgent, ObserverAgent, TwinAgent, SimulatorAgent
+from parrot_agents import TestAgent, ObserverAgent, TwinAgent, SimulatorAgent
 from db import Neo4jClient
 from capture import ScreenRecorder, ActionDetector, BrowserCapture
 from config import settings
