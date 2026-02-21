@@ -27,7 +27,7 @@ ENV_TAG = f"env:{os.getenv('DD_ENV', 'development')}"
 
 DASHBOARD_DEFINITION = {
     "title": "Parrot — AgentMirror Overview",
-    "description": "Multi-agent workflow learning system (Observer + Twin agents on AWS Bedrock)",
+    "description": "Expert workflow capture, agent replay, and agent-expert divergence tracking",
     "layout_type": "ordered",
     "widgets": [
         # ── Section: System Health ──────────────────────────────────────
@@ -102,7 +102,7 @@ DASHBOARD_DEFINITION = {
         # ── Section: Observer Agent ─────────────────────────────────────
         {
             "definition": {
-                "title": "Observer Agent — Workflow Extraction",
+                "title": "Observer Agent — Workflow Capture",
                 "type": "group",
                 "layout_type": "ordered",
                 "widgets": [
@@ -112,26 +112,9 @@ DASHBOARD_DEFINITION = {
                             "type": "timeseries",
                             "requests": [
                                 {
-                                    "q": f"sum:trace.parrot.observer.process_session.hits{{service:{SERVICE},{ENV_TAG}}}.as_count()",
+                                    "q": f"sum:parrot.observer.sessions_processed{{service:{SERVICE},{ENV_TAG}}}",
                                     "display_type": "bars",
                                 }
-                            ],
-                        }
-                    },
-                    {
-                        "definition": {
-                            "title": "Extraction Duration (s)",
-                            "type": "timeseries",
-                            "requests": [
-                                {
-                                    "q": f"avg:trace.parrot.observer.process_session.duration{{service:{SERVICE},{ENV_TAG}}}",
-                                    "display_type": "line",
-                                },
-                                {
-                                    "q": f"p95:trace.parrot.observer.process_session.duration{{service:{SERVICE},{ENV_TAG}}}",
-                                    "display_type": "line",
-                                    "style": {"palette": "orange"},
-                                },
                             ],
                         }
                     },
@@ -141,10 +124,22 @@ DASHBOARD_DEFINITION = {
                             "type": "query_value",
                             "requests": [
                                 {
-                                    "q": f"avg:trace.parrot.observer.process_session.observer.steps_extracted{{service:{SERVICE},{ENV_TAG}}}",
+                                    "q": f"avg:parrot.observer.steps_extracted{{service:{SERVICE},{ENV_TAG}}}",
                                 }
                             ],
                             "precision": 1,
+                        }
+                    },
+                    {
+                        "definition": {
+                            "title": "Raw Actions Captured",
+                            "type": "query_value",
+                            "requests": [
+                                {
+                                    "q": f"avg:parrot.observer.action_count{{service:{SERVICE},{ENV_TAG}}}",
+                                }
+                            ],
+                            "precision": 0,
                         }
                     },
                     {
@@ -153,7 +148,7 @@ DASHBOARD_DEFINITION = {
                             "type": "timeseries",
                             "requests": [
                                 {
-                                    "q": f"sum:trace.parrot.observer.process_session.errors{{service:{SERVICE},{ENV_TAG}}}.as_count()",
+                                    "q": f"sum:parrot.observer.errors{{service:{SERVICE},{ENV_TAG}}}",
                                     "display_type": "bars",
                                     "style": {"palette": "warm"},
                                 }
@@ -163,43 +158,38 @@ DASHBOARD_DEFINITION = {
                 ],
             }
         },
-        # ── Section: Twin (Coach) Agent ─────────────────────────────────
+        # ── Section: Simulator Agent ─────────────────────────────────────
         {
             "definition": {
-                "title": "Twin Agent — Coaching & Convergence",
+                "title": "Simulator Agent — Workflow Replay",
                 "type": "group",
                 "layout_type": "ordered",
                 "widgets": [
                     {
                         "definition": {
-                            "title": "Guidance Requests",
+                            "title": "Simulation Runs (Started vs Completed)",
                             "type": "timeseries",
                             "requests": [
                                 {
-                                    "q": f"sum:trace.parrot.twin.guide_step.hits{{service:{SERVICE},{ENV_TAG}}}.as_count()",
+                                    "q": f"sum:parrot.simulator.runs_started{{service:{SERVICE},{ENV_TAG}}}",
                                     "display_type": "bars",
-                                }
-                            ],
-                        }
-                    },
-                    {
-                        "definition": {
-                            "title": "Step Convergence Score Distribution",
-                            "type": "distribution",
-                            "requests": [
+                                    "style": {"palette": "blue"},
+                                },
                                 {
-                                    "q": f"avg:trace.parrot.twin.guide_step.twin.step_convergence_score{{service:{SERVICE},{ENV_TAG}}}",
-                                }
+                                    "q": f"sum:parrot.simulator.runs_completed{{service:{SERVICE},{ENV_TAG}}}",
+                                    "display_type": "bars",
+                                    "style": {"palette": "green"},
+                                },
                             ],
                         }
                     },
                     {
                         "definition": {
-                            "title": "Overall Convergence Score",
+                            "title": "Step Success Rate",
                             "type": "timeseries",
                             "requests": [
                                 {
-                                    "q": f"avg:trace.parrot.twin.calculate_convergence.twin.overall_convergence_score{{service:{SERVICE},{ENV_TAG}}}",
+                                    "q": f"avg:parrot.simulator.step_success_rate{{service:{SERVICE},{ENV_TAG}}}",
                                     "display_type": "line",
                                 }
                             ],
@@ -207,11 +197,11 @@ DASHBOARD_DEFINITION = {
                     },
                     {
                         "definition": {
-                            "title": "Deviations Detected",
+                            "title": "Step Failures by Step",
                             "type": "timeseries",
                             "requests": [
                                 {
-                                    "q": f"avg:trace.parrot.twin.calculate_convergence.twin.deviation_count{{service:{SERVICE},{ENV_TAG}}}",
+                                    "q": f"avg:parrot.simulator.step_action_failures{{service:{SERVICE},{ENV_TAG}}} by {{step}}",
                                     "display_type": "bars",
                                     "style": {"palette": "warm"},
                                 }
@@ -220,112 +210,37 @@ DASHBOARD_DEFINITION = {
                     },
                     {
                         "definition": {
-                            "title": "Avg Convergence (last hour)",
+                            "title": "Simulator Errors",
+                            "type": "timeseries",
+                            "requests": [
+                                {
+                                    "q": f"sum:parrot.simulator.errors{{service:{SERVICE},{ENV_TAG}}}",
+                                    "display_type": "bars",
+                                    "style": {"palette": "warm"},
+                                }
+                            ],
+                        }
+                    },
+                ],
+            }
+        },
+        # ── Section: Agent-Expert Divergence ─────────────────────────────
+        {
+            "definition": {
+                "title": "Agent-Expert Divergence",
+                "type": "group",
+                "layout_type": "ordered",
+                "widgets": [
+                    {
+                        "definition": {
+                            "title": "Avg Step Success Rate (last hour)",
                             "type": "query_value",
                             "requests": [
                                 {
-                                    "q": f"avg:trace.parrot.twin.calculate_convergence.twin.overall_convergence_score{{service:{SERVICE},{ENV_TAG}}}.rollup(avg, 3600)",
+                                    "q": f"avg:parrot.simulator.step_success_rate{{service:{SERVICE},{ENV_TAG}}}.rollup(avg, 3600)",
                                 }
                             ],
                             "precision": 2,
-                        }
-                    },
-                    {
-                        "definition": {
-                            "title": "High-Impact Deviations",
-                            "type": "query_value",
-                            "requests": [
-                                {
-                                    "q": f"sum:trace.parrot.twin.calculate_convergence.twin.high_impact_deviations{{service:{SERVICE},{ENV_TAG}}}.rollup(sum, 3600)",
-                                }
-                            ],
-                            "precision": 0,
-                        }
-                    },
-                ],
-            }
-        },
-        # ── Section: Bedrock / LLM Performance ─────────────────────────
-        {
-            "definition": {
-                "title": "Bedrock / LLM Performance",
-                "type": "group",
-                "layout_type": "ordered",
-                "widgets": [
-                    {
-                        "definition": {
-                            "title": "Bedrock Call Latency",
-                            "type": "timeseries",
-                            "requests": [
-                                {
-                                    "q": f"avg:trace.botocore.command.duration{{service:{SERVICE},aws_service:bedrock-runtime}}",
-                                    "display_type": "line",
-                                },
-                                {
-                                    "q": f"p95:trace.botocore.command.duration{{service:{SERVICE},aws_service:bedrock-runtime}}",
-                                    "display_type": "line",
-                                    "style": {"palette": "orange"},
-                                },
-                            ],
-                        }
-                    },
-                    {
-                        "definition": {
-                            "title": "Bedrock Error Count",
-                            "type": "timeseries",
-                            "requests": [
-                                {
-                                    "q": f"sum:trace.botocore.command.errors{{service:{SERVICE},aws_service:bedrock-runtime}}.as_count()",
-                                    "display_type": "bars",
-                                    "style": {"palette": "warm"},
-                                }
-                            ],
-                        }
-                    },
-                    {
-                        "definition": {
-                            "title": "Total LLM Calls (24h)",
-                            "type": "query_value",
-                            "requests": [
-                                {
-                                    "q": f"sum:trace.botocore.command.hits{{service:{SERVICE},aws_service:bedrock-runtime}}.as_count().rollup(sum, 86400)",
-                                }
-                            ],
-                            "precision": 0,
-                        }
-                    },
-                ],
-            }
-        },
-        # ── Section: Logs ───────────────────────────────────────────────
-        {
-            "definition": {
-                "title": "Logs & Errors",
-                "type": "group",
-                "layout_type": "ordered",
-                "widgets": [
-                    {
-                        "definition": {
-                            "title": "Recent Error Logs",
-                            "type": "log_stream",
-                            "query": f"service:{SERVICE} status:error",
-                            "columns": ["timestamp", "message"],
-                            "show_date_column": True,
-                            "show_message_column": True,
-                            "message_display": "expanded-md",
-                            "sort": {"column": "time", "order": "desc"},
-                        }
-                    },
-                    {
-                        "definition": {
-                            "title": "Log Volume by Level",
-                            "type": "timeseries",
-                            "requests": [
-                                {
-                                    "q": f"sum:logs.count{{service:{SERVICE},{ENV_TAG}}} by {{status}}.as_count()",
-                                    "display_type": "bars",
-                                }
-                            ],
                         }
                     },
                 ],
@@ -355,8 +270,52 @@ def create_dashboard(dry_run: bool = False) -> dict:
         return resp.to_dict()
 
 
+def update_dashboard(dashboard_id: str) -> dict:
+    """Update an existing dashboard with the current DASHBOARD_DEFINITION."""
+    configuration = Configuration()
+    with ApiClient(configuration) as api_client:
+        api = DashboardsApi(api_client)
+        body = Dashboard(**DASHBOARD_DEFINITION)
+        resp = api.update_dashboard(dashboard_id=dashboard_id, body=body)
+        print(f"Dashboard updated: {resp.url}")
+        return resp.to_dict()
+
+
+def list_dashboards() -> list:
+    """List all dashboards to find existing ones."""
+    configuration = Configuration()
+    with ApiClient(configuration) as api_client:
+        api = DashboardsApi(api_client)
+        resp = api.list_dashboards()
+        return [
+            {"id": d.id, "title": d.title, "url": d.url}
+            for d in (resp.dashboards or [])
+        ]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Provision the Parrot Datadog dashboard")
     parser.add_argument("--dry-run", action="store_true", help="Print JSON without creating")
+    parser.add_argument("--update", type=str, default=None, help="Update existing dashboard by ID")
+    parser.add_argument("--list", action="store_true", help="List existing dashboards")
     args = parser.parse_args()
-    create_dashboard(dry_run=args.dry_run)
+
+    if args.list:
+        try:
+            dashboards = list_dashboards()
+            for d in dashboards:
+                print(f"  {d['id']}  {d['title']}  {d.get('url', '')}")
+        except Exception as e:
+            print(f"Error listing dashboards: {e}")
+    elif args.update:
+        try:
+            update_dashboard(args.update)
+        except Exception as e:
+            print(f"Error updating dashboard: {e}")
+    elif args.dry_run:
+        create_dashboard(dry_run=True)
+    else:
+        try:
+            create_dashboard(dry_run=False)
+        except Exception as e:
+            print(f"Error creating dashboard: {e}")
