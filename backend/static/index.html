@@ -6,6 +6,8 @@
   <title>Parrot — Watch & Learn</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/3d-force-graph"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script>
     tailwind.config = {
       theme: { extend: { colors: {
@@ -30,6 +32,47 @@
     #dash-graph { width:100%; height:100%; min-height:400px; background: #0f172a; border-radius: 0; }
     #dash-analysis { position:absolute; top:8px; right:8px; bottom:8px; width:360px; z-index:20; background:rgba(255,255,255,0.97); border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.25); overflow-y:auto; }
     .scene-tooltip { font-family: Inter, sans-serif; font-size: 11px; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.95); color: #1e293b; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 250px; }
+    /* Parrot widget */
+    #voice-coach-widget { position:fixed; bottom:20px; right:20px; z-index:1000; }
+    #voice-coach-btn { width:60px; height:60px; border:none; cursor:grab; background:transparent; padding:0; transition:transform 0.2s, filter 0.2s; filter:drop-shadow(0 3px 8px rgba(0,0,0,0.2)); }
+    #voice-coach-btn:hover { transform:scale(1.1); filter:drop-shadow(0 5px 16px rgba(0,0,0,0.25)); }
+    #voice-coach-btn img { width:100%; height:100%; object-fit:contain; pointer-events:none; }
+    #voice-coach-panel { position:absolute; bottom:70px; right:0; width:380px; max-height:540px; background:white; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 8px 40px rgba(0,0,0,0.12); display:none; flex-direction:column; overflow:hidden; }
+    #voice-coach-panel.open { display:flex; }
+    #vc-header { padding:14px 16px 10px; background:rgba(255,255,255,0.85); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid #f3f4f6; }
+    #vc-messages { flex:1; max-height:360px; overflow-y:auto; padding:12px 16px; }
+    .vc-msg { font-size:13px; line-height:1.6; word-wrap:break-word; animation:slideIn 0.2s ease-out; }
+    .vc-msg.user { background:#f9fafb; color:#374151; padding:8px 14px; border-radius:20px; max-width:85%; margin-left:auto; margin-bottom:12px; font-size:12px; }
+    .vc-msg.assistant { color:#1f2937; padding:0; max-width:100%; margin-bottom:16px; }
+    .vc-msg.assistant h1,.vc-msg.assistant h2,.vc-msg.assistant h3 { font-size:13px; font-weight:700; color:#111827; margin:12px 0 4px; }
+    .vc-msg.assistant h1:first-child,.vc-msg.assistant h2:first-child,.vc-msg.assistant h3:first-child { margin-top:0; }
+    .vc-msg.assistant p { margin:0 0 8px; }
+    .vc-msg.assistant ul,.vc-msg.assistant ol { margin:0 0 8px; padding-left:18px; }
+    .vc-msg.assistant li { margin-bottom:2px; }
+    .vc-msg.assistant strong { color:#111827; }
+    .vc-msg.assistant code { background:#f3f4f6; padding:1px 5px; border-radius:4px; font-size:11px; font-family:'SF Mono',monospace; }
+    .vc-msg.assistant pre { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin:8px 0; overflow-x:auto; }
+    .vc-msg.assistant pre code { background:none; padding:0; font-size:11px; }
+    .vc-msg.assistant .mermaid { margin:8px 0; }
+    .vc-thinking { display:flex; gap:4px; padding:8px 0; }
+    .vc-thinking span { width:6px; height:6px; border-radius:50%; background:#9ca3af; animation:pulse-dot 1.4s ease-in-out infinite; }
+    .vc-thinking span:nth-child(2) { animation-delay:0.2s; }
+    .vc-thinking span:nth-child(3) { animation-delay:0.4s; }
+    #vc-suggestions { display:flex; flex-wrap:wrap; gap:6px; padding:0 16px 10px; }
+    .vc-pill { font-size:11px; padding:5px 12px; border-radius:20px; border:1px solid #e5e7eb; background:white; color:#6b7280; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+    .vc-pill:hover { border-color:#d1d5db; background:#f9fafb; color:#374151; }
+    #vc-input-area { padding:10px 12px; border-top:1px solid #f3f4f6; display:flex; align-items:center; gap:6px; }
+    #vc-input { flex:1; padding:9px 16px; border:1px solid #e5e7eb; border-radius:24px; font-size:12px; color:#1f2937; outline:none; transition:border-color 0.15s; }
+    #vc-input:focus { border-color:#9ca3af; }
+    #vc-input::placeholder { color:#9ca3af; }
+    .vc-action-btn { width:34px; height:34px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
+    #vc-send-btn { background:#111827; color:white; }
+    #vc-send-btn:hover { background:#374151; }
+    #vc-send-btn svg { width:14px; height:14px; }
+    #vc-mic-btn { background:white; border:1px solid #e5e7eb; color:#6b7280; }
+    #vc-mic-btn:hover { background:#f9fafb; color:#374151; }
+    #vc-mic-btn.recording { background:#ef4444; border-color:#ef4444; color:white; animation:pulse-dot 1s ease-in-out infinite; }
+    #vc-mic-btn svg { width:16px; height:16px; }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -245,6 +288,43 @@
     </div>
   </div>
 </div>
+
+<!-- Parrot floating widget -->
+<div id="voice-coach-widget">
+  <div id="voice-coach-panel">
+    <div id="vc-header">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <img src="/static/parrotlogo.png" style="width:22px;height:22px;" />
+          <span style="font-size:13px;font-weight:700;color:#111827;">Parrot</span>
+          <span style="font-size:10px;color:#9ca3af;font-weight:500;">Voice Coach</span>
+        </div>
+        <button onclick="toggleVoiceCoach()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:18px;line-height:1;padding:0;" onmouseover="this.style.color='#374151'" onmouseout="this.style.color='#9ca3af'">&times;</button>
+      </div>
+      <p id="vc-context" style="font-size:10px;color:#9ca3af;margin:4px 0 0;">Ask about any workflow step</p>
+    </div>
+    <div id="vc-suggestions">
+      <button class="vc-pill" onclick="askVoiceCoach('Why are we doing this step?')">Why this step?</button>
+      <button class="vc-pill" onclick="askVoiceCoach('What should I do next?')">What's next?</button>
+      <button class="vc-pill" onclick="askVoiceCoach('Explain this workflow')">Explain workflow</button>
+    </div>
+    <div id="vc-messages"></div>
+    <div id="vc-input-area">
+      <button id="vc-mic-btn" class="vc-action-btn" onclick="toggleVoiceMic()" title="Hold to speak">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+      <input id="vc-input" type="text" placeholder="Type or tap mic to speak..."
+        onkeydown="if(event.key==='Enter')sendVoiceCoachMsg()" />
+      <button id="vc-send-btn" class="vc-action-btn" onclick="sendVoiceCoachMsg()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+  <button id="voice-coach-btn" onclick="toggleVoiceCoach()" title="Parrot">
+    <img src="/static/parrotlogo.png" alt="Parrot" draggable="false" />
+  </button>
+</div>
+<audio id="vc-audio" class="hidden"></audio>
 
 <script>
 const API = '';
@@ -789,6 +869,214 @@ function safeParse(val) {
       .replace(/\bNone\b/g, 'null');
     return JSON.parse(jsonStr);
   } catch { return []; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PARROT — Floating Voice Coach Widget
+// ═══════════════════════════════════════════════════════════════
+
+let currentSimContext = {};
+let vcDragging = false, vcMoved = false, vcOffsetX = 0, vcOffsetY = 0;
+
+// Initialize mermaid
+mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose',
+  themeVariables: { fontSize: '11px', fontFamily: 'Inter, sans-serif' } });
+
+// Configure marked
+marked.setOptions({ breaks: true, gfm: true });
+
+// Track simulation context from WebSocket messages
+const _origAddSimCard = addSimCard;
+addSimCard = function(m) {
+  currentSimContext = {
+    step_number: m.step_number,
+    step_name: m.step_name,
+    action: m.action,
+    expert_reasoning: m.expert_reasoning || '',
+    workflow_name: '',
+    total_steps: 0,
+  };
+  const badge = document.getElementById('sim-step-badge');
+  if (badge) {
+    const parts = badge.textContent.match(/Step (\d+)\/(\d+)/);
+    if (parts) currentSimContext.total_steps = parseInt(parts[2]);
+  }
+  const ctx = document.getElementById('vc-context');
+  if (ctx) ctx.textContent = `Step ${m.step_number || '?'}: ${(m.step_name || '').slice(0, 40)}`;
+  _origAddSimCard(m);
+};
+
+function toggleVoiceCoach() {
+  if (vcMoved) { vcMoved = false; return; }
+  const panel = document.getElementById('voice-coach-panel');
+  panel.classList.toggle('open');
+}
+
+// Suggestion pill shortcut
+function askVoiceCoach(q) {
+  document.getElementById('vc-input').value = q;
+  sendVoiceCoachMsg();
+}
+
+// Draggable
+(function() {
+  const widget = document.getElementById('voice-coach-widget');
+  const btn = document.getElementById('voice-coach-btn');
+  btn.addEventListener('mousedown', (e) => {
+    vcDragging = true; vcMoved = false;
+    vcOffsetX = e.clientX - widget.getBoundingClientRect().left;
+    vcOffsetY = e.clientY - widget.getBoundingClientRect().top;
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!vcDragging) return;
+    vcMoved = true;
+    widget.style.right = 'auto'; widget.style.bottom = 'auto';
+    widget.style.left = (e.clientX - vcOffsetX) + 'px';
+    widget.style.top = (e.clientY - vcOffsetY) + 'px';
+  });
+  document.addEventListener('mouseup', () => { vcDragging = false; });
+})();
+
+// ── Voice Input (Web Speech API) ──────────────────────────────
+let vcRecognition = null;
+let vcIsRecording = false;
+
+function initSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return null;
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    let transcript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+    document.getElementById('vc-input').value = transcript;
+    // Auto-send on final result
+    if (event.results[event.results.length - 1].isFinal) {
+      stopVoiceMic();
+      sendVoiceCoachMsg();
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.warn('Speech recognition error:', event.error);
+    stopVoiceMic();
+  };
+
+  recognition.onend = () => {
+    stopVoiceMic();
+  };
+
+  return recognition;
+}
+
+function toggleVoiceMic() {
+  if (vcIsRecording) {
+    stopVoiceMic();
+  } else {
+    startVoiceMic();
+  }
+}
+
+function startVoiceMic() {
+  if (!vcRecognition) vcRecognition = initSpeechRecognition();
+  if (!vcRecognition) {
+    alert('Speech recognition is not supported in this browser. Please use Chrome.');
+    return;
+  }
+  try {
+    vcRecognition.start();
+    vcIsRecording = true;
+    document.getElementById('vc-mic-btn').classList.add('recording');
+    document.getElementById('vc-input').placeholder = 'Listening...';
+  } catch (e) {
+    console.warn('Mic start error:', e);
+  }
+}
+
+function stopVoiceMic() {
+  if (vcRecognition && vcIsRecording) {
+    try { vcRecognition.stop(); } catch {}
+  }
+  vcIsRecording = false;
+  document.getElementById('vc-mic-btn').classList.remove('recording');
+  document.getElementById('vc-input').placeholder = 'Type or tap mic to speak...';
+}
+
+// ── Markdown + Mermaid Renderer ───────────────────────────────
+async function renderVcMarkdown(text, container) {
+  let html = marked.parse(text);
+  container.innerHTML = html;
+  // Convert mermaid code blocks to renderable divs
+  const mermaids = container.querySelectorAll('pre code.language-mermaid');
+  for (const block of mermaids) {
+    const pre = block.parentElement;
+    const mermaidDiv = document.createElement('div');
+    mermaidDiv.className = 'mermaid';
+    mermaidDiv.textContent = block.textContent;
+    pre.replaceWith(mermaidDiv);
+  }
+  const mermaidEls = container.querySelectorAll('.mermaid');
+  if (mermaidEls.length) {
+    try { await mermaid.run({ nodes: mermaidEls }); } catch(e) { console.warn('Mermaid render error:', e); }
+  }
+}
+
+// ── Send Message ──────────────────────────────────────────────
+async function sendVoiceCoachMsg() {
+  const inp = document.getElementById('vc-input');
+  const q = inp.value.trim();
+  if (!q) return;
+  inp.value = '';
+
+  const msgs = document.getElementById('vc-messages');
+  // Hide suggestions after first message
+  const sugg = document.getElementById('vc-suggestions');
+  if (sugg) sugg.style.display = 'none';
+
+  // Add user message
+  const userDiv = document.createElement('div');
+  userDiv.className = 'vc-msg user';
+  userDiv.textContent = q;
+  msgs.appendChild(userDiv);
+
+  // Add thinking indicator (pulsing dots)
+  const thinkDiv = document.createElement('div');
+  thinkDiv.className = 'vc-msg assistant';
+  thinkDiv.innerHTML = '<div class="vc-thinking"><span></span><span></span><span></span></div>';
+  msgs.appendChild(thinkDiv);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  try {
+    const res = await fetch(`${API}/coach/voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question: q,
+        simulation_context: currentSimContext,
+      }),
+    });
+    const data = await res.json();
+    const text = data.text || 'No response';
+
+    // Render markdown + mermaid
+    await renderVcMarkdown(text, thinkDiv);
+
+    // Play audio if available
+    if (data.audio_b64) {
+      const audio = document.getElementById('vc-audio');
+      const mime = data.audio_mime || 'audio/mp3';
+      audio.src = `data:${mime};base64,${data.audio_b64}`;
+      audio.play().catch(() => {});
+    }
+  } catch (e) {
+    thinkDiv.innerHTML = '<p style="color:#ef4444;font-size:12px;">Could not reach Parrot.</p>';
+  }
+  msgs.scrollTop = msgs.scrollHeight;
 }
 
 // ── Init ───────────────────────────────────────────────────────

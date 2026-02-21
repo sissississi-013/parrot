@@ -18,6 +18,21 @@ class Settings(BaseSettings):
     mongodb_uri: Optional[str] = None
     mongodb_db_name: str = "agentmirror"
     
+    # MiniMax
+    minimax_api_key: Optional[str] = None
+    minimax_group_id: Optional[str] = None
+    minimax_model: str = "MiniMax-Text-01"
+    minimax_voice_id: str = "English_CalmWoman"
+
+    # ElevenLabs
+    elevenlabs_api_key: Optional[str] = None
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel
+
+    # Google Gemini
+    gemini_api_key: Optional[str] = None
+    gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
+    gemini_tts_voice: str = "Kore"
+
     # Datadog
     dd_api_key: Optional[str] = None
     dd_app_key: Optional[str] = None

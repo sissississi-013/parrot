@@ -1,11 +1,15 @@
 import asyncio
+import base64
+import io
 import json
 import logging
+import struct
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import boto3
+import httpx
 from ddtrace import tracer
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -212,6 +216,211 @@ class SimulateRequest(BaseModel):
     expert_workflow: Optional[Dict] = None
     start_url: str = "https://www.google.com"
     newbie_id: str = "simulator-agent"
+
+class VoiceCoachRequest(BaseModel):
+    question: str
+    simulation_context: Optional[Dict] = None
+
+# ── Parrot Coach — MiniMax Chat + ElevenLabs TTS ─────────────────
+
+MINIMAX_CHAT_URL = "https://api.minimax.io/v1/text/chatcompletion_v2"
+ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech"
+
+
+import re as _re
+
+def _strip_markdown_for_tts(text: str) -> str:
+    """Strip markdown/mermaid syntax so TTS reads clean prose."""
+    # Remove mermaid code blocks entirely
+    text = _re.sub(r'```mermaid[\s\S]*?```', '', text)
+    # Remove other code blocks
+    text = _re.sub(r'```[\s\S]*?```', '', text)
+    # Remove headings markers
+    text = _re.sub(r'#{1,6}\s*', '', text)
+    # Remove bold/italic markers
+    text = _re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text)
+    # Remove inline code
+    text = _re.sub(r'`([^`]*)`', r'\1', text)
+    # Remove link syntax
+    text = _re.sub(r'\[([^\]]*)\]\([^\)]*\)', r'\1', text)
+    # Clean up extra whitespace
+    text = _re.sub(r'\n{3,}', '\n\n', text).strip()
+    return text
+
+
+@app.post("/coach/voice")
+async def voice_coach(request: VoiceCoachRequest):
+    if not settings.minimax_api_key:
+        return {"text": "MiniMax API key not configured. Please set MINIMAX_API_KEY.", "audio_b64": None}
+
+    ctx = request.simulation_context or {}
+    context_block = ""
+    if ctx:
+        context_block = (
+            f"\n\nCurrent simulation context:\n"
+            f"- Workflow: {ctx.get('workflow_name', 'Unknown')}\n"
+            f"- Step {ctx.get('step_number', '?')}/{ctx.get('total_steps', '?')}: {ctx.get('step_name', 'N/A')}\n"
+            f"- Action: {ctx.get('action', 'N/A')}\n"
+            f"- Expert reasoning: {ctx.get('expert_reasoning', 'N/A')}"
+        )
+
+    system_prompt = (
+        "You are a friendly voice coach helping a new employee understand a workflow. "
+        "Focus on explaining WHY each step matters. Be encouraging and clear.\n\n"
+        "FORMAT RULES:\n"
+        "- Use **bold** for key terms and important concepts\n"
+        "- Use bullet lists and numbered lists for multi-point explanations\n"
+        "- Use ### headings to organize longer answers\n"
+        "- When explaining a process flow, sequence, or workflow structure, include a Mermaid diagram:\n"
+        "  ```mermaid\n  graph TD\n    A[Step 1] --> B[Step 2]\n  ```\n"
+        "- Use flowcharts (graph TD) for processes, sequence diagrams for interactions\n"
+        "- Keep answers concise but rich — prefer visual structure over long paragraphs\n"
+        "- For short factual answers, 1-3 sentences with bold highlights is fine\n"
+        "- For 'why' or 'explain' questions, use a heading + bullets + optional diagram"
+        f"{context_block}"
+    )
+
+    # 1. Call MiniMax Chat Completions API
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            chat_resp = await client.post(
+                MINIMAX_CHAT_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.minimax_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.minimax_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": request.question},
+                    ],
+                    "max_tokens": 800,
+                },
+            )
+            chat_resp.raise_for_status()
+            chat_data = chat_resp.json()
+    except Exception as e:
+        logger.error(f"MiniMax chat error: {e}")
+        return {"text": f"Sorry, I could not reach the AI service: {e}", "audio_b64": None}
+
+    response_text = (
+        chat_data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "I'm not sure how to answer that.")
+    )
+
+    # 2. TTS: Gemini > ElevenLabs > MiniMax (first available)
+    audio_b64 = None
+    audio_mime = "audio/mp3"
+    tts_clean_text = _strip_markdown_for_tts(response_text)
+
+    if settings.gemini_api_key:
+        # Gemini TTS (returns PCM L16 24kHz — wrap in WAV header for browser)
+        try:
+            gemini_url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{settings.gemini_tts_model}:generateContent?key={settings.gemini_api_key}"
+            )
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                tts_resp = await client.post(
+                    gemini_url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": tts_clean_text}]}],
+                        "generationConfig": {
+                            "response_modalities": ["AUDIO"],
+                            "speech_config": {
+                                "voice_config": {
+                                    "prebuilt_voice_config": {
+                                        "voice_name": settings.gemini_tts_voice,
+                                    }
+                                }
+                            },
+                        },
+                    },
+                )
+                tts_resp.raise_for_status()
+                tts_data = tts_resp.json()
+                parts = tts_data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    if "inlineData" in part:
+                        pcm_b64 = part["inlineData"]["data"]
+                        # Convert raw PCM to WAV so the browser can play it
+                        pcm_bytes = base64.b64decode(pcm_b64)
+                        sample_rate = 24000
+                        num_channels = 1
+                        bits_per_sample = 16
+                        byte_rate = sample_rate * num_channels * bits_per_sample // 8
+                        block_align = num_channels * bits_per_sample // 8
+                        data_size = len(pcm_bytes)
+                        wav_buf = io.BytesIO()
+                        wav_buf.write(b'RIFF')
+                        wav_buf.write(struct.pack('<I', 36 + data_size))
+                        wav_buf.write(b'WAVE')
+                        wav_buf.write(b'fmt ')
+                        wav_buf.write(struct.pack('<IHHIIHH', 16, 1, num_channels, sample_rate, byte_rate, block_align, bits_per_sample))
+                        wav_buf.write(b'data')
+                        wav_buf.write(struct.pack('<I', data_size))
+                        wav_buf.write(pcm_bytes)
+                        audio_b64 = base64.b64encode(wav_buf.getvalue()).decode()
+                        audio_mime = "audio/wav"
+                        break
+        except Exception as e:
+            logger.error(f"Gemini TTS error: {e}", exc_info=True)
+
+    if not audio_b64 and settings.elevenlabs_api_key:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                tts_resp = await client.post(
+                    f"{ELEVENLABS_TTS_URL}/{settings.elevenlabs_voice_id}",
+                    headers={
+                        "xi-api-key": settings.elevenlabs_api_key,
+                        "Content-Type": "application/json",
+                        "Accept": "audio/mpeg",
+                    },
+                    json={
+                        "text": tts_clean_text,
+                        "model_id": "eleven_multilingual_v2",
+                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                    },
+                )
+                tts_resp.raise_for_status()
+                audio_b64 = base64.b64encode(tts_resp.content).decode()
+                audio_mime = "audio/mp3"
+        except Exception as e:
+            logger.error(f"ElevenLabs TTS error: {e}")
+
+    if not audio_b64 and settings.minimax_api_key and settings.minimax_group_id:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                tts_resp = await client.post(
+                    "https://api.minimax.io/v1/t2a_v2",
+                    headers={
+                        "Authorization": f"Bearer {settings.minimax_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    params={"GroupId": settings.minimax_group_id},
+                    json={
+                        "model": "speech-02-hd",
+                        "text": tts_clean_text,
+                        "stream": False,
+                        "voice_setting": {"voice_id": settings.minimax_voice_id, "speed": 1.0},
+                        "audio_setting": {"format": "mp3", "sample_rate": 32000},
+                    },
+                )
+                tts_resp.raise_for_status()
+                tts_data = tts_resp.json()
+                if tts_data.get("base_resp", {}).get("status_code") == 0:
+                    audio_hex = tts_data.get("data", {}).get("audio", "")
+                    if audio_hex:
+                        audio_b64 = base64.b64encode(bytes.fromhex(audio_hex)).decode()
+                        audio_mime = "audio/mp3"
+        except Exception as e:
+            logger.error(f"MiniMax TTS error: {e}")
+
+    return {"text": response_text, "audio_b64": audio_b64, "audio_mime": audio_mime}
+
 
 # ── Frontend (static files) ──────────────────────────────────────
 
