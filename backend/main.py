@@ -39,6 +39,7 @@ def _init_datadog():
         logger.warning(f"ddtrace patch_all failed: {e}")
 
     from ddtrace.llmobs import LLMObs
+    import metrics as dd_metrics
 
     LLMObs.enable(
         ml_app=settings.dd_llmobs_ml_app,
@@ -48,6 +49,7 @@ def _init_datadog():
         env=settings.dd_env,
         service=settings.dd_service,
     )
+    dd_metrics.init(api_key=settings.dd_api_key, app_key=settings.dd_app_key)
     logger.info("Datadog LLM Observability enabled for app=%s", settings.dd_llmobs_ml_app)
 
 
@@ -1420,6 +1422,117 @@ async def start_auto_analyze(session_id: str, interval: float = 5.0):
         "message": f"Auto-analysis started (every {interval}s when events detected)",
         "session_id": session_id,
     }
+
+
+# ── Datadog Dashboard endpoints ──────────────────────────────────
+
+def _get_dd_api_client():
+    """Build a configured Datadog API client using existing env settings."""
+    from datadog_api_client import Configuration
+    cfg = Configuration()
+    cfg.api_key["apiKeyAuth"] = settings.dd_api_key
+    cfg.api_key["appKeyAuth"] = settings.dd_app_key
+    cfg.server_variables["site"] = settings.dd_site
+    return cfg
+
+
+@app.get("/datadog/dashboards")
+async def list_datadog_dashboards():
+    """List all dashboards in the Datadog account."""
+    if not settings.datadog_enabled:
+        raise HTTPException(status_code=503, detail="Datadog not configured")
+    try:
+        from datadog_api_client import ApiClient
+        from datadog_api_client.v1.api.dashboards_api import DashboardsApi
+
+        with ApiClient(_get_dd_api_client()) as client:
+            api = DashboardsApi(client)
+            resp = api.list_dashboards()
+            dashboards = [
+                {
+                    "id": d.id,
+                    "title": d.title,
+                    "url": d.url,
+                    "created_at": str(d.created_at) if d.created_at else None,
+                    "layout_type": str(d.layout_type) if d.layout_type else None,
+                }
+                for d in (resp.dashboards or [])
+            ]
+            return {"dashboards": dashboards}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list Datadog dashboards: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/datadog/dashboards/{dashboard_id}/share")
+async def share_datadog_dashboard(dashboard_id: str):
+    """Create a shared (public, embeddable) URL for a Datadog dashboard."""
+    if not settings.datadog_enabled:
+        raise HTTPException(status_code=503, detail="Datadog not configured")
+    try:
+        from datadog_api_client import ApiClient
+        from datadog_api_client.v1.api.dashboards_api import DashboardsApi
+        from datadog_api_client.v1.model.shared_dashboard import SharedDashboard
+        from datadog_api_client.v1.model.dashboard_share_type import DashboardShareType
+
+        with ApiClient(_get_dd_api_client()) as client:
+            api = DashboardsApi(client)
+            body = SharedDashboard(
+                dashboard_id=dashboard_id,
+                dashboard_type="custom_timeboard",
+                share_type=DashboardShareType("open"),
+            )
+            try:
+                resp = api.create_public_dashboard(body=body)
+            except Exception as create_err:
+                if "already shared" in str(create_err).lower():
+                    existing = api.get_public_dashboard(token=dashboard_id)
+                    return {
+                        "public_url": existing.public_url,
+                        "share_token": existing.token,
+                    }
+                raise create_err
+
+            return {
+                "public_url": resp.public_url,
+                "share_token": resp.token,
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to share Datadog dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/datadog/shared-dashboards")
+async def list_shared_datadog_dashboards():
+    """List already-shared (public) Datadog dashboard URLs."""
+    if not settings.datadog_enabled:
+        raise HTTPException(status_code=503, detail="Datadog not configured")
+    try:
+        from datadog_api_client import ApiClient
+        from datadog_api_client.v1.api.dashboards_api import DashboardsApi
+
+        with ApiClient(_get_dd_api_client()) as client:
+            api = DashboardsApi(client)
+            resp = api.list_dashboards()
+            shared = []
+            for d in (resp.dashboards or []):
+                if getattr(d, "is_shared", False) or getattr(d, "share_url", None):
+                    shared.append({
+                        "id": d.id,
+                        "title": d.title,
+                        "url": d.url,
+                        "share_url": getattr(d, "share_url", None),
+                    })
+            return {"shared_dashboards": shared}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list shared Datadog dashboards: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

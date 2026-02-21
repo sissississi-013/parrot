@@ -9,6 +9,7 @@ pymongo==4.10.1
 motor==3.7.1
 ddtrace>=2.14.0
 datadog>=0.50.0
+datadog-api-client>=2.0.0
 mss>=9.0.0
 pynput>=1.7.6
 Pillow>=10.0.0

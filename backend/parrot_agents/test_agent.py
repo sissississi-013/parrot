@@ -34,7 +34,7 @@ class TestAgent:
             aws_session_token=aws_session_token
         )
     
-    @tracer.wrap(service="parrot", resource="test.test_call")
+    @tracer.wrap(name="parrot.test.test_call", service="parrot", resource="test.test_call")
     @agent(name="test_agent")
     async def test_call(self, message: str) -> str:
         span = tracer.current_span()

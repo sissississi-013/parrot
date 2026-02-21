@@ -92,6 +92,7 @@
         <button onclick="setMode('workflows')" id="mode-workflows" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Workflows</button>
         <button onclick="setMode('simulate')" id="mode-simulate" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Simulate</button>
         <button onclick="setMode('dashboard')" id="mode-dashboard" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Dashboard</button>
+        <button onclick="setMode('datadog')" id="mode-datadog" class="mode-btn px-4 py-1.5 rounded-md text-xs font-semibold text-gray-500">Datadog</button>
       </div>
       <div id="health-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-[11px] text-gray-400">
         <span class="w-1.5 h-1.5 rounded-full bg-gray-300"></span> ...
@@ -202,6 +203,29 @@
         </div>
       </div>
 
+      <!-- DATADOG DASHBOARD MAIN -->
+      <div id="main-datadog" class="h-full hidden flex flex-col">
+        <div id="dd-empty" class="flex-1 flex items-center justify-center">
+          <div class="text-center max-w-sm">
+            <svg class="w-16 h-16 mx-auto mb-4 opacity-20" viewBox="0 0 128 128" fill="currentColor">
+              <path d="M96.1 56.5c-1.3-.7-2.7-1.1-4.1-1.3.1-1.5-.1-3-.5-4.5-1.6-5.7-5.8-9.5-10.6-10.7-.6-.2-1.2-.3-1.8-.3-1.2-3.4-3.3-6.3-6.2-8.4-3.9-2.9-8.7-4-13.4-3.2-4.7.8-8.8 3.4-11.4 7.1-2.2-.6-4.5-.6-6.8.1-4.3 1.4-7.4 5.1-8.4 9.6-.3 1.4-.4 2.8-.3 4.2-3.2 1.3-5.9 3.7-7.5 7-2.4 4.9-1.8 10.7 1.5 15 3.3 4.3 8.7 6.5 14 5.8l.3-.1h3.7c.2 1.3.6 2.6 1.2 3.8 2.4 5 7.3 8.1 12.8 8.1 2.3 0 4.5-.5 6.6-1.6 1.1-.6 2.2-1.3 3-2.2.9.6 1.8 1.1 2.8 1.5 1.8.7 3.7 1 5.5 1 4.7 0 9.1-2.3 11.8-6.2.9-1.3 1.5-2.7 1.9-4.2h2.3c5.5.4 10.8-2.3 13.6-7.1 2.8-4.8 2.7-10.8-.4-15.3-1.4-2-.3-1.1-3.6-2.3zM64 92c-15.5 0-28-12.5-28-28s12.5-28 28-28 28 12.5 28 28-12.5 28-28 28z"/>
+            </svg>
+            <h2 class="text-lg font-bold text-gray-800 mb-2">Datadog Dashboard</h2>
+            <p class="text-sm text-gray-400">Select a dashboard from the sidebar to view your Datadog metrics and monitoring data.</p>
+          </div>
+        </div>
+        <div id="dd-frame-wrap" class="flex-1 hidden">
+          <iframe id="dd-iframe" class="w-full h-full border-0" src="" allow="fullscreen"></iframe>
+        </div>
+        <div id="dd-error" class="flex-1 hidden flex items-center justify-center">
+          <div class="text-center max-w-sm">
+            <div class="text-4xl mb-3 opacity-30">&#x26A0;</div>
+            <h2 class="text-lg font-bold text-gray-800 mb-2">Datadog Not Configured</h2>
+            <p id="dd-error-msg" class="text-sm text-gray-400">Set DD_API_KEY and DD_APP_KEY in your .env file to enable Datadog integration.</p>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- RIGHT SIDEBAR (340px) -->
@@ -285,6 +309,29 @@
         </div>
       </div>
 
+      <!-- DATADOG DASHBOARD SIDEBAR -->
+      <div id="sidebar-datadog" class="flex-col h-full hidden">
+        <div class="p-4 border-b border-gray-100 shrink-0">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-gray-900">Dashboards</h3>
+            <button onclick="loadDatadogDashboards()" class="text-[10px] text-gray-400 hover:text-gray-600 transition" title="Refresh">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+          </div>
+          <p class="text-[10px] text-gray-400">Select a dashboard to embed it below.</p>
+        </div>
+        <div id="dd-dashboard-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+          <p class="text-xs text-gray-300 text-center pt-8">Loading dashboards...</p>
+        </div>
+        <div id="dd-selected-info" class="border-t border-gray-100 p-3 hidden shrink-0">
+          <div class="bg-purple-50 rounded-lg p-3">
+            <p class="text-[10px] font-semibold text-purple-700 mb-1">Currently Viewing</p>
+            <p id="dd-selected-title" class="text-xs text-purple-900 font-medium"></p>
+            <a id="dd-selected-link" href="#" target="_blank" class="text-[10px] text-purple-500 hover:text-purple-700 mt-1 inline-block">Open in Datadog &rarr;</a>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -344,7 +391,7 @@ async function checkHealth() {
 
 // ── Mode Switch ────────────────────────────────────────────────
 function setMode(mode) {
-  ['capture','workflows','simulate','dashboard'].forEach(m => {
+  ['capture','workflows','simulate','dashboard','datadog'].forEach(m => {
     document.getElementById(`main-${m}`).classList.toggle('hidden', m !== mode);
     document.getElementById(`sidebar-${m}`).classList.toggle('hidden', m !== mode);
     document.getElementById(`sidebar-${m}`).classList.toggle('flex', m === mode);
@@ -355,6 +402,7 @@ function setMode(mode) {
   if (mode === 'workflows') loadWorkflows();
   if (mode === 'simulate') loadSimWorkflows();
   if (mode === 'dashboard') loadDashboard();
+  if (mode === 'datadog') loadDatadogDashboards();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -742,10 +790,8 @@ async function selectDashSession(sessionId) {
         </div>
       </div>`;
 
-    // Render the 3D convergence graph (full width, panel overlays on top)
     renderGraph3D(d, 'dash-graph');
 
-    // Build and show the textual analysis overlay panel
     const panel = document.getElementById('dash-analysis');
     const content = document.getElementById('dash-analysis-content');
     buildAnalysisPanel(d, a, overallPct, scoreCol, content);
@@ -763,7 +809,6 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
 
     let html = '';
 
-    // Overall score with visual ring
     html += `
       <div class="text-center pb-3 border-b border-gray-100">
         <div class="relative inline-flex items-center justify-center w-16 h-16">
@@ -777,7 +822,6 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
         <p class="text-[10px] text-gray-400 mt-1">Overall Convergence</p>
       </div>`;
 
-    // How convergence is calculated
     html += `
       <div class="bg-blue-50 rounded-lg p-3 border border-blue-100">
         <p class="text-[10px] font-semibold text-blue-800 mb-1">How is this calculated?</p>
@@ -789,7 +833,6 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
         </p>
       </div>`;
 
-    // Per-step breakdown
     if (stepScores.length) {
       html += `<div>
         <h4 class="text-[11px] font-bold text-gray-800 mb-2">Step-by-Step Breakdown</h4>
@@ -820,7 +863,6 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
       html += `</div></div>`;
     }
 
-    // Strengths
     if (strengths.length) {
       html += `<div>
         <h4 class="text-[11px] font-bold text-green-800 mb-1.5">Strengths</h4>
@@ -829,7 +871,6 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
         </ul></div>`;
     }
 
-    // Deviations summary
     if (deviations.length) {
       html += `<div>
         <h4 class="text-[11px] font-bold text-red-800 mb-1.5">Deviations</h4>
@@ -842,7 +883,6 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
         </ul></div>`;
     }
 
-    // Areas for improvement
     if (improvements.length) {
       html += `<div>
         <h4 class="text-[11px] font-bold text-amber-800 mb-1.5">Areas for Improvement</h4>
@@ -854,13 +894,11 @@ function buildAnalysisPanel(d, a, overallPct, scoreCol, content) {
     content.innerHTML = html;
 }
 
-// Parse stringified arrays stored in Neo4j properties (Python str() format)
 function safeParse(val) {
   if (!val) return [];
   if (Array.isArray(val)) return val;
   if (typeof val !== 'string') return [];
   try {
-    // Python str() uses single quotes, True/False/None instead of JSON's true/false/null
     const jsonStr = val
       .replace(/'/g, '"')
       .replace(/\bTrue\b/g, 'true')
@@ -871,20 +909,147 @@ function safeParse(val) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DATADOG DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+
+let ddDashboardsLoaded = false;
+
+async function loadDatadogDashboards() {
+  const list = document.getElementById('dd-dashboard-list');
+  list.textContent = '';
+  const loading = document.createElement('p');
+  loading.className = 'text-xs text-gray-300 text-center pt-8';
+  loading.textContent = 'Loading dashboards...';
+  list.appendChild(loading);
+
+  try {
+    const resp = await fetch(API + '/datadog/dashboards');
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+    const dashboards = data.dashboards || [];
+    ddDashboardsLoaded = true;
+    renderDdList(dashboards);
+  } catch (e) {
+    list.textContent = '';
+    const errEl = document.createElement('div');
+    errEl.className = 'text-center pt-8';
+    const errIcon = document.createElement('div');
+    errIcon.className = 'text-2xl mb-2 opacity-30';
+    errIcon.textContent = '\u26A0';
+    errEl.appendChild(errIcon);
+    const errMsg = document.createElement('p');
+    errMsg.className = 'text-xs text-red-400';
+    errMsg.textContent = e.message || 'Failed to load';
+    errEl.appendChild(errMsg);
+    list.appendChild(errEl);
+
+    document.getElementById('dd-empty').classList.add('hidden');
+    document.getElementById('dd-frame-wrap').classList.add('hidden');
+    document.getElementById('dd-error').classList.remove('hidden');
+    const errorMsgEl = document.getElementById('dd-error-msg');
+    errorMsgEl.textContent = e.message || 'Failed to load dashboards. Check your Datadog configuration.';
+  }
+}
+
+function renderDdList(dashboards) {
+  const list = document.getElementById('dd-dashboard-list');
+  list.textContent = '';
+
+  if (!dashboards.length) {
+    const empty = document.createElement('p');
+    empty.className = 'text-xs text-gray-300 text-center pt-8';
+    empty.textContent = 'No dashboards found';
+    list.appendChild(empty);
+    return;
+  }
+
+  dashboards.forEach(d => {
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left p-2.5 rounded-lg border border-gray-100 hover:border-purple-300 hover:bg-purple-50/50 transition group';
+    btn.addEventListener('click', () => selectDashboard(d.id, d.title, d.url));
+
+    const title = document.createElement('p');
+    title.className = 'text-xs font-semibold text-gray-900 group-hover:text-purple-700';
+    title.textContent = d.title;
+    btn.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'flex items-center gap-2 mt-0.5';
+
+    if (d.layout_type) {
+      const badge = document.createElement('span');
+      badge.className = 'text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded';
+      badge.textContent = d.layout_type;
+      meta.appendChild(badge);
+    }
+
+    if (d.created_at) {
+      const date = document.createElement('span');
+      date.className = 'text-[10px] text-gray-400';
+      date.textContent = new Date(d.created_at).toLocaleDateString();
+      meta.appendChild(date);
+    }
+
+    btn.appendChild(meta);
+    list.appendChild(btn);
+  });
+}
+
+async function selectDashboard(dashboardId, title, ddUrl) {
+  const emptyEl = document.getElementById('dd-empty');
+  const frameWrap = document.getElementById('dd-frame-wrap');
+  const errorEl = document.getElementById('dd-error');
+  const iframe = document.getElementById('dd-iframe');
+  const infoPanel = document.getElementById('dd-selected-info');
+
+  emptyEl.classList.add('hidden');
+  errorEl.classList.add('hidden');
+  frameWrap.classList.remove('hidden');
+  iframe.src = 'about:blank';
+
+  try {
+    const resp = await fetch(API + '/datadog/dashboards/' + dashboardId + '/share', { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+
+    if (data.public_url) {
+      iframe.src = data.public_url;
+    } else {
+      throw new Error('No public URL returned. The dashboard may not support sharing.');
+    }
+
+    document.getElementById('dd-selected-title').textContent = title;
+    const link = document.getElementById('dd-selected-link');
+    link.href = ddUrl || '#';
+    infoPanel.classList.remove('hidden');
+
+  } catch (e) {
+    frameWrap.classList.add('hidden');
+    errorEl.classList.remove('hidden');
+    document.getElementById('dd-error-msg').textContent =
+      'Could not embed dashboard: ' + (e.message || 'Unknown error');
+    infoPanel.classList.add('hidden');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PARROT — Floating Voice Coach Widget
 // ═══════════════════════════════════════════════════════════════
 
 let currentSimContext = {};
 let vcDragging = false, vcMoved = false, vcOffsetX = 0, vcOffsetY = 0;
 
-// Initialize mermaid
 mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose',
   themeVariables: { fontSize: '11px', fontFamily: 'Inter, sans-serif' } });
 
-// Configure marked
 marked.setOptions({ breaks: true, gfm: true });
 
-// Track simulation context from WebSocket messages
 const _origAddSimCard = addSimCard;
 addSimCard = function(m) {
   currentSimContext = {
@@ -911,13 +1076,11 @@ function toggleVoiceCoach() {
   panel.classList.toggle('open');
 }
 
-// Suggestion pill shortcut
 function askVoiceCoach(q) {
   document.getElementById('vc-input').value = q;
   sendVoiceCoachMsg();
 }
 
-// Draggable
 (function() {
   const widget = document.getElementById('voice-coach-widget');
   const btn = document.getElementById('voice-coach-btn');
@@ -936,7 +1099,6 @@ function askVoiceCoach(q) {
   document.addEventListener('mouseup', () => { vcDragging = false; });
 })();
 
-// ── Voice Input (Web Speech API) ──────────────────────────────
 let vcRecognition = null;
 let vcIsRecording = false;
 
@@ -954,7 +1116,6 @@ function initSpeechRecognition() {
       transcript += event.results[i][0].transcript;
     }
     document.getElementById('vc-input').value = transcript;
-    // Auto-send on final result
     if (event.results[event.results.length - 1].isFinal) {
       stopVoiceMic();
       sendVoiceCoachMsg();
@@ -1006,11 +1167,9 @@ function stopVoiceMic() {
   document.getElementById('vc-input').placeholder = 'Type or tap mic to speak...';
 }
 
-// ── Markdown + Mermaid Renderer ───────────────────────────────
 async function renderVcMarkdown(text, container) {
   let html = marked.parse(text);
   container.innerHTML = html;
-  // Convert mermaid code blocks to renderable divs
   const mermaids = container.querySelectorAll('pre code.language-mermaid');
   for (const block of mermaids) {
     const pre = block.parentElement;
@@ -1025,7 +1184,6 @@ async function renderVcMarkdown(text, container) {
   }
 }
 
-// ── Send Message ──────────────────────────────────────────────
 async function sendVoiceCoachMsg() {
   const inp = document.getElementById('vc-input');
   const q = inp.value.trim();
@@ -1033,17 +1191,14 @@ async function sendVoiceCoachMsg() {
   inp.value = '';
 
   const msgs = document.getElementById('vc-messages');
-  // Hide suggestions after first message
   const sugg = document.getElementById('vc-suggestions');
   if (sugg) sugg.style.display = 'none';
 
-  // Add user message
   const userDiv = document.createElement('div');
   userDiv.className = 'vc-msg user';
   userDiv.textContent = q;
   msgs.appendChild(userDiv);
 
-  // Add thinking indicator (pulsing dots)
   const thinkDiv = document.createElement('div');
   thinkDiv.className = 'vc-msg assistant';
   thinkDiv.innerHTML = '<div class="vc-thinking"><span></span><span></span><span></span></div>';
@@ -1062,10 +1217,8 @@ async function sendVoiceCoachMsg() {
     const data = await res.json();
     const text = data.text || 'No response';
 
-    // Render markdown + mermaid
     await renderVcMarkdown(text, thinkDiv);
 
-    // Play audio if available
     if (data.audio_b64) {
       const audio = document.getElementById('vc-audio');
       const mime = data.audio_mime || 'audio/mp3';

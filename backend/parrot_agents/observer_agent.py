@@ -7,6 +7,8 @@ from typing import List, Dict
 
 from ddtrace import tracer
 
+import metrics as dd_metrics
+
 logger = logging.getLogger("parrot.observer")
 
 try:
@@ -44,7 +46,7 @@ class ObserverAgent:
         self.bedrock = bedrock_client
         self.model_id = model_id
     
-    @tracer.wrap(service="parrot", resource="observer.process_session")
+    @tracer.wrap(name="parrot.observer.process_session", service="parrot", resource="observer.process_session")
     @agent(name="observer_agent")
     async def process_session(self, actions: List[Dict], session_metadata: Dict) -> Dict:
         span = tracer.current_span()
@@ -125,6 +127,11 @@ Respond in JSON format:
                 span.set_metric("observer.steps_extracted", steps_extracted)
                 span.set_tag("observer.workflow_name", workflow_data.get("workflow_name", ""))
 
+            task_tag = f"task_type:{task_type}"
+            dd_metrics.count("parrot.observer.sessions_processed", 1, tags=[task_tag])
+            dd_metrics.gauge("parrot.observer.steps_extracted", steps_extracted, tags=[task_tag])
+            dd_metrics.gauge("parrot.observer.action_count", len(actions), tags=[task_tag])
+
             logger.info(
                 "Session processed: session_id=%s steps=%d task=%s",
                 session_metadata.get("session_id"),
@@ -138,6 +145,7 @@ Respond in JSON format:
             if span:
                 span.set_tag("error", True)
                 span.set_tag("error.message", str(e))
+            dd_metrics.count("parrot.observer.errors", 1, tags=[f"task_type:{task_type}"])
             logger.error("Observer processing failed: %s", e)
             raise Exception(f"Observer agent processing failed: {str(e)}")
     
@@ -158,7 +166,7 @@ Respond in JSON format:
 
         return json.loads(text.strip())
     
-    @tracer.wrap(service="parrot", resource="observer.generate_reasoning")
+    @tracer.wrap(name="parrot.observer.generate_reasoning", service="parrot", resource="observer.generate_reasoning")
     @tool(name="generate_reasoning")
     async def generate_reasoning(self, action: Dict, context: Dict) -> str:
         span = tracer.current_span()

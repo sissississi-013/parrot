@@ -14,6 +14,10 @@ import time
 from typing import Dict, List, Optional, Callable
 from uuid import uuid4
 
+from ddtrace import tracer
+
+import metrics as dd_metrics
+
 try:
     from ddtrace.llmobs.decorators import agent, workflow, tool
 except ImportError:
@@ -60,6 +64,7 @@ class SimulatorAgent:
         self.model_id = model_id
         self._sessions: Dict[str, SimulationSession] = {}
 
+    @tracer.wrap(name="parrot.simulator.start", service="parrot", resource="simulator.start")
     @agent(name="simulator_agent")
     async def start_simulation(
         self,
@@ -75,6 +80,13 @@ class SimulatorAgent:
         session = SimulationSession(session_id, workflow)
         self._sessions[session_id] = session
 
+        span = tracer.current_span()
+        wf_name = workflow.get("workflow_name", "unknown")
+        if span:
+            span.set_tag("simulator.session_id", session_id)
+            span.set_tag("simulator.workflow_name", wf_name)
+            span.set_metric("simulator.total_steps", session.total_steps)
+
         try:
             session.playwright = await async_playwright().start()
             session.browser = await session.playwright.chromium.launch(
@@ -89,7 +101,6 @@ class SimulatorAgent:
             await session.page.goto(start_url, wait_until="domcontentloaded")
             session.status = "running"
 
-            # Capture initial screenshot
             initial_screenshot = await self._take_screenshot(session)
             session.screenshots.append({
                 "step": 0,
@@ -98,9 +109,10 @@ class SimulatorAgent:
                 "image_b64": initial_screenshot,
             })
 
-            logger.info(f"Simulation {session_id} started: {workflow.get('workflow_name', '?')}")
+            dd_metrics.count("parrot.simulator.runs_started", 1, tags=[f"workflow:{wf_name}"])
 
-            # Run the simulation loop in the background
+            logger.info(f"Simulation {session_id} started: {wf_name}")
+
             asyncio.create_task(
                 self._simulation_loop(session, on_action, on_screenshot)
             )
@@ -109,6 +121,7 @@ class SimulatorAgent:
 
         except Exception as e:
             session.status = "failed"
+            dd_metrics.count("parrot.simulator.errors", 1, tags=[f"workflow:{wf_name}", "phase:start"])
             logger.error(f"Failed to start simulation: {e}")
             raise
 
@@ -141,6 +154,11 @@ class SimulatorAgent:
     ):
         """Main loop: iterate through workflow steps and execute each one."""
         steps = session.workflow.get("steps", [])
+        wf_name = session.workflow.get("workflow_name", "unknown")
+        wf_tag = f"workflow:{wf_name}"
+        steps_succeeded = 0
+        steps_failed = 0
+        loop_start = time.time()
 
         for i, step in enumerate(steps):
             if session.status != "running":
@@ -148,24 +166,24 @@ class SimulatorAgent:
 
             session.current_step = i + 1
             step_name = step.get("step_name", f"Step {i + 1}")
+            step_start = time.time()
             logger.info(f"Simulating step {i + 1}/{len(steps)}: {step_name}")
 
             try:
-                # Get current page state
                 current_url = session.page.url
                 screenshot_b64 = await self._take_screenshot(session)
 
-                # Ask Claude what browser actions to perform
                 actions = await self._plan_actions(step, current_url, screenshot_b64)
 
-                # Execute each action
+                step_action_failures = 0
                 for action in actions:
                     result = await self._execute_action(session, action)
 
-                    # Brief pause for page to settle
+                    if result.get("status") in ("failed", "error"):
+                        step_action_failures += 1
+
                     await asyncio.sleep(1)
 
-                    # Capture screenshot after action
                     post_screenshot = await self._take_screenshot(session)
 
                     action_entry = {
@@ -186,7 +204,6 @@ class SimulatorAgent:
                         "image_b64": post_screenshot,
                     })
 
-                    # Fire callbacks
                     if on_action:
                         try:
                             await on_action(action_entry)
@@ -198,11 +215,23 @@ class SimulatorAgent:
                         except Exception:
                             pass
 
-                # Pause between steps
+                step_duration = time.time() - step_start
+                step_ok = step_action_failures == 0
+                if step_ok:
+                    steps_succeeded += 1
+                else:
+                    steps_failed += 1
+
+                dd_metrics.gauge("parrot.simulator.step_duration_s", step_duration, tags=[wf_tag, f"step:{i + 1}"])
+                dd_metrics.gauge("parrot.simulator.step_actions_planned", len(actions), tags=[wf_tag, f"step:{i + 1}"])
+                dd_metrics.gauge("parrot.simulator.step_action_failures", step_action_failures, tags=[wf_tag, f"step:{i + 1}"])
+
                 await asyncio.sleep(2)
 
             except Exception as e:
+                steps_failed += 1
                 logger.error(f"Step {i + 1} failed: {e}")
+                dd_metrics.count("parrot.simulator.step_errors", 1, tags=[wf_tag, f"step:{i + 1}"])
                 session.action_log.append({
                     "step_number": i + 1,
                     "step_name": step_name,
@@ -212,8 +241,19 @@ class SimulatorAgent:
                 })
 
         session.status = "completed"
+        total_duration = time.time() - loop_start
+
+        dd_metrics.gauge("parrot.simulator.run_duration_s", total_duration, tags=[wf_tag])
+        dd_metrics.gauge("parrot.simulator.steps_succeeded", steps_succeeded, tags=[wf_tag])
+        dd_metrics.gauge("parrot.simulator.steps_failed", steps_failed, tags=[wf_tag])
+        dd_metrics.gauge("parrot.simulator.total_actions", len(session.action_log), tags=[wf_tag])
+        dd_metrics.count("parrot.simulator.runs_completed", 1, tags=[wf_tag])
+        if len(steps) > 0:
+            dd_metrics.gauge("parrot.simulator.step_success_rate", steps_succeeded / len(steps), tags=[wf_tag])
+
         logger.info(f"Simulation {session.session_id} completed: {len(session.action_log)} actions")
 
+    @tracer.wrap(name="parrot.simulator.plan_actions", service="parrot", resource="simulator.plan_actions")
     @tool(name="plan_actions")
     async def _plan_actions(
         self, step: Dict, current_url: str, screenshot_b64: str
@@ -285,6 +325,7 @@ Respond with ONLY the JSON array, no explanation."""
             logger.error(f"Action planning failed: {e}")
             return [{"type": "wait", "seconds": 2}]
 
+    @tracer.wrap(name="parrot.simulator.execute_action", service="parrot", resource="simulator.execute_action")
     @tool(name="execute_action")
     async def _execute_action(self, session: SimulationSession, action: Dict) -> Dict:
         """Execute a single browser action via Playwright."""

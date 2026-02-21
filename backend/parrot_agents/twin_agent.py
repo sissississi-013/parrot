@@ -4,6 +4,8 @@ from typing import Dict, Optional, List
 
 from ddtrace import tracer
 
+import metrics as dd_metrics
+
 logger = logging.getLogger("parrot.twin")
 
 try:
@@ -30,7 +32,7 @@ class TwinAgent:
         self.bedrock = bedrock_client
         self.model_id = model_id
     
-    @tracer.wrap(service="parrot", resource="twin.guide_step")
+    @tracer.wrap(name="parrot.twin.guide_step", service="parrot", resource="twin.guide_step")
     @agent(name="twin_agent")
     async def guide_step(
         self,
@@ -111,6 +113,13 @@ Provide coaching guidance in JSON format:
             if span:
                 span.set_tag("twin.deviation_detected", is_deviation)
 
+            wf_tag = f"workflow:{expert_workflow.get('workflow_name', 'unknown')}"
+            if step_score is not None:
+                dd_metrics.gauge("parrot.twin.step_convergence_score", float(step_score), tags=[wf_tag])
+            dd_metrics.count("parrot.twin.guidance_requests", 1, tags=[wf_tag])
+            if is_deviation:
+                dd_metrics.count("parrot.twin.deviations_detected", 1, tags=[wf_tag])
+
             logger.info(
                 "Guidance generated: step=%d/%d score=%s deviation=%s",
                 current_step + 1,
@@ -128,7 +137,7 @@ Provide coaching guidance in JSON format:
             logger.error("Twin guidance failed: %s", e)
             raise Exception(f"Twin agent guidance failed: {str(e)}")
     
-    @tracer.wrap(service="parrot", resource="twin.calculate_convergence")
+    @tracer.wrap(name="parrot.twin.calculate_convergence", service="parrot", resource="twin.calculate_convergence")
     @tool(name="calculate_convergence")
     async def calculate_convergence(
         self,
@@ -182,24 +191,45 @@ Calculate convergence in JSON format:
 
             response_body = json.loads(response['body'].read())
             analysis_text = response_body['content'][0]['text']
+            # #region agent log
+            import time as _t; _log_path = "/Users/ianalin/Desktop/aws-datadog/.cursor/debug-bb8da0.log"
+            with open(_log_path, "a") as _f: _f.write(json.dumps({"sessionId":"bb8da0","hypothesisId":"A,B,C,D","location":"twin_agent.py:184","message":"raw_analysis_text","data":{"text_repr":repr(analysis_text),"text_len":len(analysis_text),"first_200":analysis_text[:200],"last_200":analysis_text[-200:]},"timestamp":int(_t.time()*1000)})+"\n")
+            # #endregion
             analysis = self._extract_json(analysis_text)
 
             overall_score = analysis.get("overall_score")
             deviations = analysis.get("deviations", [])
 
+            high_impact = sum(1 for d in deviations if d.get("impact") == "high")
+
             if span:
                 if overall_score is not None:
                     span.set_metric("twin.overall_convergence_score", float(overall_score))
                 span.set_metric("twin.deviation_count", len(deviations))
-
-                high_impact = sum(1 for d in deviations if d.get("impact") == "high")
                 span.set_metric("twin.high_impact_deviations", high_impact)
+
+            wf_tag = f"workflow:{expert_workflow.get('workflow_name', 'unknown')}"
+            if overall_score is not None:
+                dd_metrics.gauge("parrot.convergence.overall_score", float(overall_score), tags=[wf_tag])
+            dd_metrics.gauge("parrot.convergence.deviation_count", len(deviations), tags=[wf_tag])
+            dd_metrics.gauge("parrot.convergence.high_impact_deviations", high_impact, tags=[wf_tag])
+            dd_metrics.gauge("parrot.convergence.expert_step_count", len(expert_workflow.get("steps", [])), tags=[wf_tag])
+            dd_metrics.gauge("parrot.convergence.newbie_action_count", len(newbie_actions), tags=[wf_tag])
+
+            for step_score_entry in analysis.get("step_scores", []):
+                step_val = step_score_entry.get("score")
+                if step_val is not None:
+                    dd_metrics.gauge(
+                        "parrot.convergence.step_score",
+                        float(step_val),
+                        tags=[wf_tag, f"step:{step_score_entry.get('step', 0)}"],
+                    )
 
             logger.info(
                 "Convergence calculated: score=%s deviations=%d high_impact=%d",
                 overall_score,
                 len(deviations),
-                sum(1 for d in deviations if d.get("impact") == "high"),
+                high_impact,
             )
 
             return analysis
@@ -221,4 +251,9 @@ Calculate convergence in JSON format:
         if text.endswith('```'):
             text = text[:-3]
         
-        return json.loads(text.strip())
+        cleaned = text.strip()
+        # #region agent log
+        import time as _t; _log_path = "/Users/ianalin/Desktop/aws-datadog/.cursor/debug-bb8da0.log"
+        with open(_log_path, "a") as _f: _f.write(json.dumps({"sessionId":"bb8da0","hypothesisId":"A,B,C,D","location":"twin_agent.py:_extract_json","message":"cleaned_text_before_parse","data":{"cleaned_repr":repr(cleaned),"cleaned_len":len(cleaned),"starts_with_brace":cleaned.startswith("{"),"ends_with_brace":cleaned.endswith("}"),"first_200":cleaned[:200],"last_200":cleaned[-200:]},"timestamp":int(_t.time()*1000)})+"\n")
+        # #endregion
+        return json.loads(cleaned)
